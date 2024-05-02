@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include "ENV/parseENV.h"
+#include "DISCORD/discord.h"
 
 int main(int, char**)
 {
@@ -9,7 +10,8 @@ int main(int, char**)
     if ( (var = get_env_var("DISCORD_TOKEN")) != NULL)
     {
         std::string TOKEN(var);
-        std::cout << "TOKEN: " << TOKEN << "\n";
+        discord_bot bot(TOKEN);
+        bot.start();
     }
     return 0;
 }
