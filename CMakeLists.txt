@@ -2,12 +2,15 @@ cmake_minimum_required(VERSION 3.5.0)
 set(PROJ_NAME Imp_Bot)
 project(${PROJ_NAME} VERSION 0.1.0 LANGUAGES C CXX)
 
-file(GLOB_RECURSE SRCS ${PROJECT_SOURCE_DIR}/src/*.cpp)
-add_executable(${PROJ_NAME} ${SRCS})
+add_executable(${PROJ_NAME} 
+    ${PROJECT_SOURCE_DIR}/src/ENV/parseENV.c
+    ${PROJECT_SOURCE_DIR}/src/DISCORD/discord.cpp
+    ${PROJECT_SOURCE_DIR}/src/main.cpp
+)
 
 target_link_libraries(${PROJ_NAME} dpp)
 
-set_target_properties(${PROJECT_NAME} PROPERTIES
+set_target_properties(${PROJ_NAME} PROPERTIES
 CXX_STANDARD 17
 CXX_STANDARD_REQUIRED ON
 )

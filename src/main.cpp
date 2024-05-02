@@ -1,7 +1,9 @@
 #include <iostream>
 #include <string>
-#include "ENV/parseENV.h"
 #include "DISCORD/discord.h"
+extern "C" {
+    #include "ENV/parseENV.h"
+}
 
 int main(int, char**)
 {
