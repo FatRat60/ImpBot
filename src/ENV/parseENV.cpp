@@ -1,27 +1,34 @@
 #include <stdlib.h>
-#include <fstream>
-#include <iostream>
-#include <string>
-#include "string.h"
+#include <stdio.h>
+#include <string.h>
 #include "parseENV.h"
 
-int parse_env()
+void parse_env()
 {
-    std::ifstream env_file(ENV_PATH);
+    FILE *env_file;
+    env_file = fopen(ENV_PATH, "r");
     // parse contents
-    if (env_file.is_open())
+    if (env_file != NULL)
     {
-        std::string line;
+        char *line = NULL;
+        size_t len = 0;
         size_t line_number = 1;
-        while (std::getline(env_file, line))
+        while (getline(&line, &len, env_file) != -1)
         {
-            if (putenv(line.c_str()) != 0)
+            char *name = strtok(line, "=");
+            char *value = strtok(NULL, "=");
+            if (value != NULL)
             {
-                std::cerr << "Line " << line_number << " failed to parse\n";
+                setenv(name, value, 0);
+            }
+            else
+            {
+                printf("Line %ld failed to parse\n", line_number);
             }
         }
+        free(line);
+        fclose(env_file);
     }
-    return env_file.is_open();
 }
 
 char * get_env_var(const char *var_name)
