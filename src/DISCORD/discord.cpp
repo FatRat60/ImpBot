@@ -26,42 +26,46 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
         );
 
         const std::vector<dpp::slashcommand> commands = { pingcmd, joincmd, leavecmd, playcmd };
+    
+        bot.global_bulk_command_create(commands);
+    }
 
+    // populate map
+    if (dpp::run_once<struct populate_map>())
+    {
         command_map.insert({"ping", PING});
         command_map.insert({"join", JOIN});
         command_map.insert({"leave", LEAVE});
         command_map.insert({"play", PLAY});
-    
-        bot.global_bulk_command_create(commands);
     }
 }
 
 void discord::handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
     auto search = command_map.find(event.command.get_command_name());
-    std::cout << "handling slash\n";
-    switch (search->second)
+    if (search != command_map.end())
     {
-    case PING:
-        ping(event);
-        break;
+        switch (search->second)
+        {
+        case PING:
+            ping(event);
+            break;
 
-    case JOIN:
-        join(bot, event);
-        break;
+        case JOIN:
+            join(bot, event);
+            break;
 
-    case LEAVE:
-        leave(bot, event);
-        break;
+        case LEAVE:
+            leave(bot, event);
+            break;
 
-    case PLAY:
-        play(bot, event);
-        break;
-    
-    default:
-        event.reply("Not a valid command");
-        break;
+        case PLAY:
+            play(bot, event);
+            break;
+        }
     }
+    else
+        event.reply(event.command.get_command_name() + " is not a valid command");
 }
 
 void discord::ping(const dpp::slashcommand_t& event)
@@ -71,6 +75,7 @@ void discord::ping(const dpp::slashcommand_t& event)
 
 bool discord::join(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
+    std::cout << "Attempting to join\n";
     dpp::guild *g = dpp::find_guild(event.command.guild_id);
     auto current_vc = event.from->get_voice(event.command.guild_id);
     bool join_vc = true;
