@@ -9,19 +9,21 @@ enum command_name
 {
     PING,
     JOIN,
-    LEAVE
+    LEAVE,
+    PLAY
 };
 
 class discord
 {
     public:
         static void handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event);
-        static void register_events(dpp::cluster& bot, const dpp::ready_t& event);
+        static void register_events(dpp::cluster& bot, const dpp::ready_t& event, bool doRegister, bool doDelete);
     private:
         static std::unordered_map<std::string, command_name> command_map;
         static void ping(const dpp::slashcommand_t& event);
         static bool join(dpp::cluster& bot, const dpp::slashcommand_t& event);
         static bool leave(dpp::cluster& bot, const dpp::slashcommand_t& event);
+        static void play(dpp::cluster& bot, const dpp::slashcommand_t& event);
 };
 
 #endif

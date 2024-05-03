@@ -6,22 +6,34 @@
 
 std::unordered_map<std::string, command_name> discord::command_map;
 
-void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event)
+void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool doRegister, bool doDelete)
 {
-    if (dpp::run_once<struct register_bot_commands>())
-        {
-                dpp::slashcommand pingcmd("ping", "Ping pong!!!", bot.me.id);
-                dpp::slashcommand joincmd("join", "Joins your voice channel", bot.me.id);
-                dpp::slashcommand leavecmd("leave", "Leaves the voice channel", bot.me.id);
+    // delete commands
+    if (doDelete && dpp::run_once<struct delete_bot_commands>())
+    {
+        bot.global_bulk_command_delete();
+    }
 
-                const std::vector<dpp::slashcommand> commands = { pingcmd, joincmd, leavecmd };
+    // register commands
+    if (doRegister && dpp::run_once<struct register_bot_commands>())
+    {
+        dpp::slashcommand pingcmd("ping", "Ping pong!!!", bot.me.id);
+        dpp::slashcommand joincmd("join", "Joins your voice channel", bot.me.id);
+        dpp::slashcommand leavecmd("leave", "Leaves the voice channel", bot.me.id);
+        dpp::slashcommand playcmd("play", "Play song from a link or a search term", bot.me.id);
+        playcmd.add_option(
+            dpp::command_option(dpp::co_string, "link", "song link or search term", true)
+        );
 
-                command_map.insert({"ping", PING});
-                command_map.insert({"join", JOIN});
-                command_map.insert({"leave", LEAVE});
-        
-                bot.global_bulk_command_create(commands);
-        }
+        const std::vector<dpp::slashcommand> commands = { pingcmd, joincmd, leavecmd, playcmd };
+
+        command_map.insert({"ping", PING});
+        command_map.insert({"join", JOIN});
+        command_map.insert({"leave", LEAVE});
+        command_map.insert({"play", PLAY});
+    
+        bot.global_bulk_command_create(commands);
+    }
 }
 
 void discord::handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event)
@@ -40,6 +52,10 @@ void discord::handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event)
 
     case LEAVE:
         leave(bot, event);
+        break;
+
+    case PLAY:
+        play(bot, event);
         break;
     
     default:
@@ -92,4 +108,9 @@ bool discord::leave(dpp::cluster& bot, const dpp::slashcommand_t& event)
     if (current_vc)
         event.from->disconnect_voice(event.command.guild_id);
     return current_vc != nullptr;
+}
+
+void discord::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
+{
+    
 }
