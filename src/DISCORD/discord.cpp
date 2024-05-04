@@ -75,7 +75,6 @@ void discord::ping(const dpp::slashcommand_t& event)
 
 bool discord::join(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
-    std::cout << "Attempting to join\n";
     dpp::guild *g = dpp::find_guild(event.command.guild_id);
     auto current_vc = event.from->get_voice(event.command.guild_id);
     bool join_vc = true;
@@ -111,7 +110,12 @@ bool discord::leave(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
     auto current_vc = event.from->get_voice(event.command.guild_id);
     if (current_vc)
+    {
         event.from->disconnect_voice(event.command.guild_id);
+        event.reply("Bye Bye");
+    }
+    else
+        event.reply("Not in a voice channel");
     return current_vc != nullptr;
 }
 
