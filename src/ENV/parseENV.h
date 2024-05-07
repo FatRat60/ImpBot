@@ -5,5 +5,6 @@
 
 void parse_env();
 char * get_env_var(const char *var_name);
+void remove_newline(char *line);
 
 #endif

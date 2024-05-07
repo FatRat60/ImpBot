@@ -3,6 +3,18 @@
 #include <string.h>
 #include "parseENV.h"
 
+void remove_newline(char *line)
+{
+    if (*line == '\0')
+        return;
+
+    while (*line != '\0')
+        line++; // inc until end
+    line--; // dec once to get last char
+    if (*line == '\n')
+        *line = '\0'; // remove newline if exists
+}
+
 void parse_env()
 {
     FILE *env_file;
@@ -19,6 +31,7 @@ void parse_env()
             char *value = strtok(NULL, "=");
             if (value != NULL)
             {
+                remove_newline(value);
                 setenv(name, value, 0);
             }
             else
