@@ -125,7 +125,7 @@ void discord::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
     if (youtube::canSearch())
     {
         std::string url = std::get<std::string>(event.get_parameter("link"));
-        if (youtube::search_video(url))
+        if (youtube::search_video(url, &bot))
         {
             event.reply("query successful!");
         }
