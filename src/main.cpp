@@ -1,9 +1,10 @@
 #include <iostream>
 #include <string>
 #include <dpp/dpp.h>
-#include "DISCORD/discord.h"
+#include "discord.h"
+#include "youtube.h"
 extern "C" {
-    #include "ENV/parseENV.h"
+    #include "parseENV.h"
 }
 
 #define PARAM_LEN 4
@@ -14,6 +15,11 @@ int main(int argc, char *argv[])
     char * var;
     if ( (var = get_env_var("DISCORD_TOKEN")) != NULL)
     {
+        // try to init youtube api
+        char *var2 = get_env_var("YOUTUBE_API_KEY");
+        if (var2) 
+            youtube::setAPIkey(std::string(var2));
+
         std::string TOKEN(var);
         dpp::cluster bot(TOKEN, dpp::i_default_intents | dpp::i_message_content);
 

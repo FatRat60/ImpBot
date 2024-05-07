@@ -1,4 +1,5 @@
 #include "discord.h"
+#include "youtube.h"
 #include <dpp/dpp.h>
 #include <string>
 #include <vector>
@@ -121,5 +122,18 @@ bool discord::leave(dpp::cluster& bot, const dpp::slashcommand_t& event)
 
 void discord::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
-    
+    if (youtube::canSearch())
+    {
+        std::string url = std::get<std::string>(event.get_parameter("link"));
+        if (youtube::search_video(url))
+        {
+            event.reply("query successful!");
+        }
+        else
+        {
+            event.reply("Query = fail");
+        }
+    } else
+        event.reply("Video search functionality currently unavailable");
 }
+    
