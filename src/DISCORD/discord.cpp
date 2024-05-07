@@ -74,7 +74,7 @@ void discord::ping(const dpp::slashcommand_t& event)
     event.reply("Pong!");
 }
 
-bool discord::join(dpp::cluster& bot, const dpp::slashcommand_t& event)
+void discord::join(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
     dpp::guild *g = dpp::find_guild(event.command.guild_id);
     auto current_vc = event.from->get_voice(event.command.guild_id);
@@ -96,19 +96,17 @@ bool discord::join(dpp::cluster& bot, const dpp::slashcommand_t& event)
         if (!g->connect_member_voice(event.command.get_issuing_user().id))
         {
             event.reply("You are not in a voice channel, idiot...");
-            join_vc = false;
         }
         else
             event.reply("Joined your channel!");
     }
     else
         event.reply("Already here, king");
-
-    return join_vc;
 }
 
-bool discord::leave(dpp::cluster& bot, const dpp::slashcommand_t& event)
+void discord::leave(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
+    // TODO leave will need to properly handle terminating of music 
     auto current_vc = event.from->get_voice(event.command.guild_id);
     if (current_vc)
     {
@@ -117,12 +115,38 @@ bool discord::leave(dpp::cluster& bot, const dpp::slashcommand_t& event)
     }
     else
         event.reply("Not in a voice channel");
-    return current_vc != nullptr;
 }
 
 void discord::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
-    if (youtube::canSearch())
+    // join voice channel first
+    dpp::guild *g = dpp::find_guild(event.command.guild_id);
+    auto current_vc = event.from->get_voice(event.command.guild_id);
+    bool join_vc = true;
+    bool doMusic = true;
+
+    if (current_vc)
+    {
+        auto users_vc = g->voice_members.find(event.command.get_issuing_user().id);
+        if (users_vc != g->voice_members.end() && current_vc->channel_id != users_vc->second.channel_id)
+        {
+            event.from->disconnect_voice(event.command.guild_id);
+        }
+        else 
+            join_vc = false;
+    }
+
+    if (join_vc)
+    {
+        if (!g->connect_member_voice(event.command.get_issuing_user().id))
+        {
+            event.reply("You are not in a voice channel, idiot...");
+            doMusic = false;
+        }
+    }
+
+    // query youtube if joined channel AND API key is init'd
+    if (doMusic && youtube::canSearch())
     {
         std::string url = std::get<std::string>(event.get_parameter("link"));
         event.reply("Searching for " + url);
@@ -130,7 +154,7 @@ void discord::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
         bot.request(
             std::string(YOUTUBE_ENDPOINT) + std::string("?part=snippet&maxResults=1&q=") + youtube::pipe_replace(url) + std::string("&key=") + youtube::getKey(),
             dpp::m_get,
-            [&bot](dpp::http_request_completion_t result){ youtube::post_search(result, bot); }
+            [&bot](dpp::http_request_completion_t result){ youtube::post_search(result, bot); } // post search will handle download and playing of music
         );
     } else
         event.reply("Video search functionality currently unavailable");

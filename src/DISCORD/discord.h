@@ -21,8 +21,8 @@ class discord
     private:
         static std::unordered_map<std::string, command_name> command_map;
         static void ping(const dpp::slashcommand_t& event);
-        static bool join(dpp::cluster& bot, const dpp::slashcommand_t& event);
-        static bool leave(dpp::cluster& bot, const dpp::slashcommand_t& event);
+        static void join(dpp::cluster& bot, const dpp::slashcommand_t& event);
+        static void leave(dpp::cluster& bot, const dpp::slashcommand_t& event);
         static void play(dpp::cluster& bot, const dpp::slashcommand_t& event);
 };
 
