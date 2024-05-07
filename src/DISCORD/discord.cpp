@@ -125,14 +125,13 @@ void discord::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
     if (youtube::canSearch())
     {
         std::string url = std::get<std::string>(event.get_parameter("link"));
-        if (youtube::search_video(url, &bot))
-        {
-            event.reply("query successful!");
-        }
-        else
-        {
-            event.reply("Query = fail");
-        }
+        event.reply("Searching for " + url);
+        std::string foundVideoId;
+        bot.request(
+            std::string(YOUTUBE_ENDPOINT) + std::string("?part=snippet&maxResults=1&q=") + youtube::pipe_replace(url) + std::string("&key=") + youtube::getKey(),
+            dpp::m_get,
+            [&bot](dpp::http_request_completion_t result){ youtube::post_search(result, bot); }
+        );
     } else
         event.reply("Video search functionality currently unavailable");
 }
