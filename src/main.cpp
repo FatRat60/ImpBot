@@ -28,6 +28,9 @@ int main(int argc, char *argv[])
         // handle incoming slash commands
         bot.on_slashcommand([&bot](const dpp::slashcommand_t& event){ discord::handle_slash(bot, event); });
 
+        // handle joining voice
+        bot.on_voice_ready([&bot](const dpp::voice_ready_t& event){ discord::stream_music(bot, event.voice_client); });
+
         // register events
         bot.on_ready([&bot, &argc, &argv](const dpp::ready_t& event){ 
             // parse command line to find out if bot needs to register/unregister commands

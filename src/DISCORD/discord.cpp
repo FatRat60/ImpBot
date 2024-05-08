@@ -1,6 +1,7 @@
 #include "discord.h"
 #include "youtube.h"
 #include <dpp/dpp.h>
+#include <oggz/oggz.h>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -72,6 +73,73 @@ void discord::handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event)
 void discord::ping(const dpp::slashcommand_t& event)
 {
     event.reply("Pong!");
+}
+
+void discord::stream_music(dpp::cluster& bot, dpp::discord_voice_client *voice_client)
+{
+    if (!youtube::isPlaying())
+    {
+        OGGZ * jeopardy_ogg = oggz_open(JEOPARDY, OGGZ_READ); // open jeopardy file
+
+        oggz_set_read_callback(
+            jeopardy_ogg, -1,
+            [](OGGZ *oggz, oggz_packet *packet, long serialno,
+                void *user_data) {
+                    dpp::discord_voice_client *voice_client = (dpp::discord_voice_client *)user_data;
+
+                    voice_client->send_audio_opus(packet->op.packet, packet->op.bytes);
+                    return 0;
+                },
+                (void *)voice_client
+        );
+
+        // play jeopardy until req song is rdy to play
+        while (!youtube::isPlaying() && !voice_client->terminating)
+        {
+            static const constexpr long CHUNK_READ = BUFSIZ * 2;
+
+            if (jeopardy_ogg)
+            {
+                const long read_bytes = oggz_read(jeopardy_ogg, CHUNK_READ);
+                if (!read_bytes)
+                    oggz_seek(jeopardy_ogg, 0, SEEK_SET); // restart from beginning. I pray this line is NEVER executed
+            }
+        }
+        // close file
+        oggz_close(jeopardy_ogg);
+    }
+    // Now song is ready
+    OGGZ *track = oggz_open(youtube::getTrack().c_str(), OGGZ_READ);
+    if (!track)
+    {
+        std::cout << "Error when loading song\n";
+        return;
+    }
+    
+    oggz_set_read_callback(
+        track, -1,
+        [](OGGZ *oggz, oggz_packet *packet, long serialno,
+            void *user_data) {
+                dpp::discord_voice_client *voice_client = (dpp::discord_voice_client *)user_data;
+
+                voice_client->send_audio_opus(packet->op.packet, packet->op.bytes);
+                return 0;
+            },
+            (void *)voice_client
+    );
+
+
+    while (!voice_client->terminating)
+    {
+        static const constexpr long CHUNK_READ = BUFSIZ * 2;
+
+        const long read_bytes = oggz_read(track, CHUNK_READ);
+        if (!read_bytes) // EOF
+            break;
+    }
+
+    oggz_close(track);
+    youtube::done();
 }
 
 void discord::join(dpp::cluster& bot, const dpp::slashcommand_t& event)
@@ -146,17 +214,76 @@ void discord::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
     }
 
     // query youtube if joined channel AND API key is init'd
-    if (doMusic && youtube::canSearch())
+    if (doMusic)
     {
         std::string url = std::get<std::string>(event.get_parameter("link"));
-        event.reply("Searching for " + url);
-        std::string foundVideoId;
-        bot.request(
-            std::string(YOUTUBE_ENDPOINT) + std::string("?part=snippet&maxResults=1&q=") + youtube::pipe_replace(url) + std::string("&key=") + youtube::getKey(),
-            dpp::m_get,
-            [&bot](dpp::http_request_completion_t result){ youtube::post_search(result, bot); } // post search will handle download and playing of music
-        );
-    } else
-        event.reply("Video search functionality currently unavailable");
+        if (!youtube::isLink(url)) // have to search using api
+        {
+            if (youtube::canSearch()) // Youtube API key exists
+            {
+                event.reply("Searching for " + url);
+                // make req
+                dpp::http_request req(
+                    std::string(YOUTUBE_ENDPOINT) + std::string("?part=snippet&maxResults=1&type=video&q=") + youtube::pipe_replace(url) + std::string("&key=") + youtube::getKey(),
+                    nullptr,
+                    dpp::m_get
+                );
+                dpp::http_request_completion_t result = req.run(&bot);
+
+                // parse response
+                if (result.status == 200)
+                {
+                    url = youtube::post_search(result);
+                    if (url.empty())
+                    {
+                        event.reply("No results found. Please try again");
+                        return;
+                    }
+                }
+                else
+                {
+                    event.reply("Authorization failed. Regenerate API key");
+                }
+            }
+            else // API key not found. Only links can be used
+                event.reply("Youtube search not available. Please provide a link");
+        }
+
+        // Now url is a link guaranteed
+        if (!youtube::isPlaying())
+        {
+            event.reply("Playing " + url);
+            if(!youtube::download(url))
+            {
+                event.edit_original_response(dpp::message("could not download music @ " + url));
+            }
+        }
+        else
+        {
+            // TODO add song to queue
+            if (youtube::canPreLoad())
+            {
+                event.reply("Playing next: " + url);
+                if (!youtube::download(url))
+                {
+                    event.edit_original_response(dpp::message("Could not queue do to failed download"));
+                }
+            }
+            else 
+            {
+                if (youtube::canQueue())
+                {
+                    event.reply("Queueing " + url);
+                    youtube::queueSong(url);
+                }
+                else
+                {
+                    event.reply("Queue is full. Remove songs before trying again");
+                }
+            }
+        }
+        if (!join_vc && !youtube::isPlaying())
+            stream_music(bot, event.from->get_voice(event.command.guild_id)->voiceclient);
+    }
 }
     
