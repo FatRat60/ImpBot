@@ -1,10 +1,7 @@
 #include "discord.h"
 #include "youtube.h"
-#include <dpp/dpp.h>
 #include <oggz/oggz.h>
-#include <string>
 #include <vector>
-#include <unordered_map>
 
 std::unordered_map<std::string, command_name> discord::command_map;
 
@@ -75,71 +72,37 @@ void discord::ping(const dpp::slashcommand_t& event)
     event.reply("Pong!");
 }
 
-void discord::stream_music(dpp::cluster& bot, dpp::discord_voice_client *voice_client)
+void discord::send_music_buff(dpp::cluster& bot, dpp::discord_voice_client *voice_client)
 {
-    if (!youtube::isPlaying())
-    {
-        OGGZ * jeopardy_ogg = oggz_open(JEOPARDY, OGGZ_READ); // open jeopardy file
-
-        oggz_set_read_callback(
-            jeopardy_ogg, -1,
-            [](OGGZ *oggz, oggz_packet *packet, long serialno,
-                void *user_data) {
-                    dpp::discord_voice_client *voice_client = (dpp::discord_voice_client *)user_data;
-
-                    voice_client->send_audio_opus(packet->op.packet, packet->op.bytes);
-                    return 0;
-                },
-                (void *)voice_client
-        );
-
-        // play jeopardy until req song is rdy to play
-        while (!youtube::isPlaying() && !voice_client->terminating)
-        {
-            static const constexpr long CHUNK_READ = BUFSIZ * 2;
-
-            if (jeopardy_ogg)
-            {
-                const long read_bytes = oggz_read(jeopardy_ogg, CHUNK_READ);
-                if (!read_bytes)
-                    oggz_seek(jeopardy_ogg, 0, SEEK_SET); // restart from beginning. I pray this line is NEVER executed
-            }
-        }
-        // close file
-        oggz_close(jeopardy_ogg);
-    }
-    // Now song is ready
-    OGGZ *track = oggz_open(youtube::getTrack().c_str(), OGGZ_READ);
-    if (!track)
-    {
-        std::cout << "Error when loading song\n";
-        return;
-    }
-    
+    OGGZ * ogg = oggz_open(TRACK_FILE, OGGZ_READ);
     oggz_set_read_callback(
-        track, -1,
+        ogg, -1,
         [](OGGZ *oggz, oggz_packet *packet, long serialno,
-            void *user_data) {
-                dpp::discord_voice_client *voice_client = (dpp::discord_voice_client *)user_data;
-
-                voice_client->send_audio_opus(packet->op.packet, packet->op.bytes);
-                return 0;
-            },
-            (void *)voice_client
+        void *user_data) {
+            dpp::discord_voice_client *voice_client = (dpp::discord_voice_client *)user_data;
+            voice_client->send_audio_opus(packet->op.packet, packet->op.bytes);
+            return 0;
+        },
+        (void *)voice_client
     );
 
-
-    while (!voice_client->terminating)
+    if (ogg) // file opened. Send the audio
     {
-        static const constexpr long CHUNK_READ = BUFSIZ * 2;
 
-        const long read_bytes = oggz_read(track, CHUNK_READ);
-        if (!read_bytes) // EOF
-            break;
+        if (voice_client->get_secs_remaining() > 0) // song already in buffer
+            voice_client->insert_marker(); // marker indicating new song
+
+        while (!voice_client->terminating) 
+        {
+            static const constexpr long CHUNK_READ = BUFSIZ * 2;
+            const long read_bytes = oggz_read(ogg, CHUNK_READ);
+            if (!read_bytes)
+                break;
+        }
+
+        oggz_close(ogg); // close ogg file
+        remove(TRACK_FILE); // remove tmp file
     }
-
-    oggz_close(track);
-    youtube::done();
 }
 
 void discord::join(dpp::cluster& bot, const dpp::slashcommand_t& event)
@@ -243,47 +206,23 @@ void discord::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                 else
                 {
                     event.reply("Authorization failed. Regenerate API key");
+                    return;
                 }
             }
             else // API key not found. Only links can be used
                 event.reply("Youtube search not available. Please provide a link");
+                return;
+        }
+        event.reply("Playing " + url);
+
+        // download url
+        while (youtube::isDownloading()){}
+        if (!youtube::download(url))
+        {
+            event.edit_original_response(dpp::message("Could not download file"));
         }
 
-        // Now url is a link guaranteed
-        if (!youtube::isPlaying())
-        {
-            event.reply("Playing " + url);
-            if(!youtube::download(url))
-            {
-                event.edit_original_response(dpp::message("could not download music @ " + url));
-            }
-        }
-        else
-        {
-            // TODO add song to queue
-            if (youtube::canPreLoad())
-            {
-                event.reply("Playing next: " + url);
-                if (!youtube::download(url))
-                {
-                    event.edit_original_response(dpp::message("Could not queue do to failed download"));
-                }
-            }
-            else 
-            {
-                if (youtube::canQueue())
-                {
-                    event.reply("Queueing " + url);
-                    youtube::queueSong(url);
-                }
-                else
-                {
-                    event.reply("Queue is full. Remove songs before trying again");
-                }
-            }
-        }
-        if (!join_vc && !youtube::isPlaying())
-            stream_music(bot, event.from->get_voice(event.command.guild_id)->voiceclient);
+        if (!join_vc) // manually call send_music_buff since on_voice_ready wont trigger
+            send_music_buff(bot, current_vc->voiceclient);
     }
 }
-    

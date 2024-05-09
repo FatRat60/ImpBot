@@ -1,16 +1,10 @@
 #include "youtube.h"
-#include <dpp/dpp.h>
-#include <string>
 #include <iostream>
 
-// yt-dlp -x --audio-format opus -o test.opus -S +size --no-playlist URL
+// yt-dlp -x --audio-format opus -o test.opus -S +size --no-playlist --force-overwrites --fixup never --extractor-args youtube:player_client=web URL
 
 std::string youtube::YOUTUBE_API_KEY;
-const std::string youtube::music_files[] = {"temp/track1.opus", "temp/track2.opus"};
-int youtube::current_track = -1;
-size_t youtube::queue_size = 0;
-std::string youtube::queue[MAX_QUEUE_SIZE];
-bool youtube::preloaded = false;
+bool youtube::downloading = false;
 
 bool youtube::isLink(std::string& query)
 {
@@ -54,16 +48,12 @@ std::string youtube::post_search(dpp::http_request_completion_t result)
     return found_url;
 }
 
-// downloads song to one of the two opus buffer files. Whichever is not being played
+/*Used by discord bot in /play to download songs*/
 bool youtube::download(std::string& url)
 {
-    size_t dl_index = current_track + 1;
-    if (dl_index > 1)
-        dl_index = 0;
-    std::string command = "\"yt-dlp\" \"-x\" \"--audio-format\" \"opus\" \"-o\" \"" + music_files[dl_index] + "\" \"-S\" \"+size\" \"--no-playlist\" \"--force-overwrites\" \"--fixup\" \"never\" \"" + url + "\"";
-    int result = system(command.c_str()); // WHY DO YOU RETURN -1
-    std::cout << "Returned " << result << "\n";
-    if (result == -1 && current_track == -1)
-        current_track = dl_index;
+    downloading = true;
+    std::string command = "\"yt-dlp\" \"-x\" \"--audio-format\" \"opus\" \"-o\" \"temp/song.opus\" \"-S\" \"+size\" \"--no-playlist\" \"--force-overwrites\" \"--fixup\" \"never\" \"--extractor-args\" \"youtube:player_client=web\" \"" + url + "\"";
+    int result = system(command.c_str());
+    downloading = false;
     return result == -1;
 }
