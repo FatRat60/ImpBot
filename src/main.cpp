@@ -29,7 +29,14 @@ int main(int argc, char *argv[])
         bot.on_slashcommand([&bot](const dpp::slashcommand_t& event){ discord::handle_slash(bot, event); });
 
         // handle joining voice
-        bot.on_voice_ready([&bot](const dpp::voice_ready_t& event){ discord::send_music_buff(bot, event.voice_client); });
+        bot.on_voice_ready([&bot](const dpp::voice_ready_t& event){
+            auto vc = event.voice_client;
+            if (vc)
+            {
+                discord::hello(vc); // bot greeting
+                discord::send_music_buff(bot, vc); // load first track
+            }
+        });
 
         // register events
         bot.on_ready([&bot, &argc, &argv](const dpp::ready_t& event){ 
