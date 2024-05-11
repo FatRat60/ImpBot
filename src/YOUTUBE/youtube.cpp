@@ -1,10 +1,10 @@
 #include "youtube.h"
 #include <iostream>
+#include <cstdlib>
 
 // yt-dlp -x --audio-format opus -o test.opus -S +size --no-playlist --force-overwrites --fixup never --extractor-args youtube:player_client=web URL
 
 std::string youtube::YOUTUBE_API_KEY;
-bool youtube::downloading = false;
 
 bool youtube::isLink(std::string& query)
 {
@@ -49,11 +49,8 @@ std::string youtube::post_search(dpp::http_request_completion_t result)
 }
 
 /*Used by discord bot in /play to download songs*/
-bool youtube::download(std::string& url)
+void youtube::download(std::string url)
 {
-    downloading = true;
     std::string command = "\"yt-dlp\" \"-x\" \"--audio-format\" \"opus\" \"-o\" \"temp/song.opus\" \"-S\" \"+size\" \"--no-playlist\" \"--force-overwrites\" \"--fixup\" \"never\" \"--extractor-args\" \"youtube:player_client=web\" \"" + url + "\"";
-    int result = system(command.c_str());
-    downloading = false;
-    return result == -1;
+    system(command.c_str());
 }

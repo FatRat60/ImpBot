@@ -8,21 +8,20 @@
 #define YOUTUBE_ENDPOINT "https://www.googleapis.com/youtube/v3/search"
 #define YOUTUBE_URL "https://www.youtube.com/watch?v="
 #define TRACK_FILE "temp/song.opus"
+#define YUI "resources/yaharo.opus"
 
 class youtube
 {
     private:
         static std::string YOUTUBE_API_KEY;
-        static bool downloading;
     public:
-        static bool isDownloading() { return downloading; }
         static bool isLink(std::string& query); // returns true if query begins with "https://"
         static std::string pipe_replace(std::string& query);
         static std::string getKey() { return YOUTUBE_API_KEY; }
         static bool canSearch() { return !YOUTUBE_API_KEY.empty(); }
         static void setAPIkey(std::string API_KEY) { YOUTUBE_API_KEY = API_KEY; }
         static std::string post_search(dpp::http_request_completion_t result);
-        static bool download(std::string& url);
+        static void download(std::string url);
 };  
 
 #endif
