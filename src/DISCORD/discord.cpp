@@ -1,9 +1,9 @@
 #include "discord.h"
 #include "youtube.h"
 #include <oggz/oggz.h>
-#include <vector>
 
 std::unordered_map<std::string, command_name> discord::command_map;
+std::unordered_map<dpp::snowflake, std::vector<size_t>> discord::songs_to_skip;
 std::thread discord::download_thread;
 
 void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool doRegister, bool doDelete)
@@ -11,12 +11,15 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
     // delete commands
     if (doDelete && dpp::run_once<struct delete_bot_commands>())
     {
+        bot.log(dpp::loglevel::ll_info, "Deleting Commands");
         bot.global_bulk_command_delete();
     }
 
     // register commands
     if (doRegister && dpp::run_once<struct register_bot_commands>())
     {
+        bot.log(dpp::loglevel::ll_info, "Registering Commands");
+
         dpp::slashcommand pingcmd("ping", "Ping pong!!!", bot.me.id);
         dpp::slashcommand joincmd("join", "Joins your voice channel", bot.me.id);
         dpp::slashcommand leavecmd("leave", "Leaves the voice channel", bot.me.id);
@@ -27,10 +30,16 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
         dpp::slashcommand pausecmd("pause", "Pause the current song", bot.me.id);
         dpp::slashcommand stopcmd("stop", "stops current song and clears queue", bot.me.id);
         dpp::slashcommand skipcmd("skip", "Skips to the next song", bot.me.id);
+        dpp::slashcommand queuecmd("queue", "Displays the current queue", bot.me.id);
+        dpp::slashcommand removecmd("remove", "Removes the requested song/songs from queue", bot.me.id);
+        removecmd.add_option(
+            dpp::command_option(dpp::co_string, "number", "Track number to remove. Seperate by commas and use 1:5 to denote a range", true)
+        );
 
         const std::vector<dpp::slashcommand> commands = { 
             pingcmd, joincmd, leavecmd, playcmd,
-            pausecmd, stopcmd, skipcmd
+            pausecmd, stopcmd, skipcmd, queuecmd,
+            removecmd
          };
     
         bot.global_bulk_command_create(commands);
@@ -39,6 +48,7 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
     // populate map
     if (dpp::run_once<struct populate_map>())
     {
+        bot.log(dpp::loglevel::ll_info, "Generating command map");
         command_map.insert({"ping", PING});
         command_map.insert({"join", JOIN});
         command_map.insert({"leave", LEAVE});
@@ -46,6 +56,8 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
         command_map.insert({"pause", PAUSE});
         command_map.insert({"stop", STOP});
         command_map.insert({"skip", SKIP});
+        command_map.insert({"queue", QUEUE});
+        command_map.insert({"remove", REMOVE});
     }
 }
 
@@ -83,6 +95,14 @@ void discord::handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event)
         case SKIP:
             skip(bot, event);
             break;
+
+        case QUEUE:
+            queue(event);
+            break;
+
+        case REMOVE:
+            remove(event);
+            break;
         }
     }
     else
@@ -94,7 +114,7 @@ void discord::ping(const dpp::slashcommand_t& event)
     event.reply("Pong!");
 }
 
-void discord::send_music_buff(dpp::cluster& bot, dpp::discord_voice_client *voice_client)
+void discord::send_music_buff(dpp::discord_voice_client *voice_client, std::string& url)
 {
     // wait for download to finish
     if (download_thread.joinable())
@@ -116,7 +136,9 @@ void discord::send_music_buff(dpp::cluster& bot, dpp::discord_voice_client *voic
     {
 
         if (voice_client->is_playing()) // song already in buffer
-            voice_client->insert_marker(); // marker indicating new song
+        {
+            voice_client->insert_marker(std::to_string(voice_client->get_tracks_remaining()) + " " + url); // marker indicating new song in form "trackNo url"
+        }
 
         while (!voice_client->terminating) 
         {
@@ -127,10 +149,8 @@ void discord::send_music_buff(dpp::cluster& bot, dpp::discord_voice_client *voic
         }
 
         oggz_close(ogg); // close ogg file
-        remove(TRACK_FILE); // remove tmp file
+        std::remove(TRACK_FILE); // remove tmp file
     }
-    else
-        bot.message_create(dpp::message(voice_client->channel_id, "Download Failed"));
 }
 
 void discord::hello(dpp::discord_voice_client *voice_client)
@@ -158,6 +178,11 @@ void discord::hello(dpp::discord_voice_client *voice_client)
 
         oggz_close(yaharo);
     }
+}
+
+void discord::handle_marker(const dpp::voice_track_marker_t &marker)
+{
+    // Checks if marker is to be skipped. If so will invoke skip_to_next_marker()
 }
 
 void discord::join(dpp::cluster& bot, const dpp::slashcommand_t& event)
@@ -264,14 +289,15 @@ void discord::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                 }
             }
             else // API key not found. Only links can be used
+            {
                 event.reply("Youtube search not available. Please provide a link");
                 return;
+            }
         }
+        bot.log(dpp::loglevel::ll_info, "Start Download");
 
         // download url
-        std::cout << "joinable: " << download_thread.joinable();
         while (download_thread.joinable()){} // thread hasnt been joined by send_music_buff yet
-        std::cout << "Garsh\n";
         download_thread = std::thread(youtube::download, url); // launch thread
 
         if (!join_vc) // manually call send_music_buff since on_voice_ready wont trigger
@@ -280,7 +306,7 @@ void discord::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                 event.reply("Queueing " + url);
             else
                 event.reply("Playing next: " + url);
-            send_music_buff(bot, current_vc->voiceclient);
+            send_music_buff(current_vc->voiceclient, url);
         }
         else // on_voice_ready will invoke send_music_buff
         {
@@ -349,4 +375,57 @@ void discord::skip(dpp::cluster& bot, const dpp::slashcommand_t& event)
     }
     else
         event.reply("Tip: join a voice channel before typing /skip");
+}
+
+void discord::queue(const dpp::slashcommand_t &event)
+{
+    auto voice_conn = event.from->get_voice(event.command.guild_id);
+    if (voice_conn) // bot is connected
+    {
+        if (voice_conn->voiceclient->get_tracks_remaining() > 1) // there is actually music playing
+        {
+            const std::vector<std::string>& metadata = voice_conn->voiceclient->get_marker_metadata(); // get metadata
+            std::string msg;
+            // create embed of queue
+            for (std::string marker : metadata)
+                msg += marker + "\n";
+            // send embed
+            event.reply(msg);
+        }
+        else
+            event.reply("No songs in queue");
+    }
+    else
+        event.reply("Not in a channel pookie. Such a silly billy");
+}
+
+void discord::remove(const dpp::slashcommand_t &event)
+{
+    auto voice_conn = event.from->get_voice(event.command.guild_id);
+    if (voice_conn)
+    {
+        if (voice_conn->voiceclient->is_playing())
+        {
+            std::string numbers = std::get<std::string>(event.get_parameter("number"));
+            if (!numbers.empty())
+            {
+                int num = std::stoi(numbers.substr(0, 1));
+                if (num <= voice_conn->voiceclient->get_tracks_remaining()) // number to remove is within the range of songs queued
+                {
+                    // try to add to map
+                    auto map_search = songs_to_skip.find(event.command.guild_id);
+                    if (map_search != songs_to_skip.end()) // exists. need to add number
+                    {
+                        auto guild_songs_to_skip = map_search->second;
+                    }
+                }
+                else
+                    event.reply("Could not remove track " + numbers.substr(0, 1) + ". Does not exist");
+            }
+        }
+        else
+            event.reply("No songs ");
+    }
+    else
+        event.reply("Not in voice");
 }

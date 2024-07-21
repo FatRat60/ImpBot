@@ -34,9 +34,13 @@ int main(int argc, char *argv[])
             if (vc)
             {
                 discord::hello(vc); // bot greeting
-                discord::send_music_buff(bot, vc); // load first track
+                std::string url; // first song wont appear in queue so no url needed
+                discord::send_music_buff(vc, url); // load first track
             }
         });
+
+        // handle passing marker in audio
+        bot.on_voice_track_marker([](const dpp::voice_track_marker_t& marker){ });
 
         // register events
         bot.on_ready([&bot, &argc, &argv](const dpp::ready_t& event){ 
