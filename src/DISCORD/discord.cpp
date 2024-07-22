@@ -3,7 +3,7 @@
 #include <oggz/oggz.h>
 
 std::unordered_map<std::string, command_name> discord::command_map;
-std::unordered_map<dpp::snowflake, std::vector<size_t>> discord::songs_to_skip;
+std::queue<size_t> discord::songs_to_skip;
 std::thread discord::download_thread;
 
 void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool doRegister, bool doDelete)
@@ -114,7 +114,7 @@ void discord::ping(const dpp::slashcommand_t& event)
     event.reply("Pong!");
 }
 
-void discord::send_music_buff(dpp::discord_voice_client *voice_client, std::string& url)
+void discord::send_music_buff(dpp::discord_voice_client *voice_client, std::string& url, bool add_start_marker)
 {
     // wait for download to finish
     if (download_thread.joinable())
@@ -135,9 +135,11 @@ void discord::send_music_buff(dpp::discord_voice_client *voice_client, std::stri
     if (ogg) // file opened. Send the audio
     {
 
-        if (voice_client->is_playing()) // song already in buffer
+        if (add_start_marker) // song already in buffer FIGURE OUT THIS
         {
-            voice_client->insert_marker(std::to_string(voice_client->get_tracks_remaining()) + " " + url); // marker indicating new song in form "trackNo url"
+            std::string track = std::to_string((voice_client->get_tracks_remaining() / 2) - songs_to_skip.size());
+            voice_client->insert_marker(track + " " + url); // marker indicating new song in form "trackNo url"
+            voice_client->log(dpp::loglevel::ll_info, "Track " + track + " has been queued");
         }
 
         while (!voice_client->terminating) 
@@ -147,6 +149,8 @@ void discord::send_music_buff(dpp::discord_voice_client *voice_client, std::stri
             if (!read_bytes)
                 break;
         }
+
+        voice_client->insert_marker("");
 
         oggz_close(ogg); // close ogg file
         std::remove(TRACK_FILE); // remove tmp file
@@ -174,7 +178,6 @@ void discord::hello(dpp::discord_voice_client *voice_client)
             if (!read_bytes)
                 break;
         }
-        voice_client->send_silence(20);
 
         oggz_close(yaharo);
     }
@@ -183,6 +186,31 @@ void discord::hello(dpp::discord_voice_client *voice_client)
 void discord::handle_marker(const dpp::voice_track_marker_t &marker)
 {
     // Checks if marker is to be skipped. If so will invoke skip_to_next_marker()
+    // Parse marker for number
+    size_t pos = marker.track_meta.find(' ');
+    if (pos != std::string::npos) // found space
+    {
+        std::cout << "Handling marker\n";
+        // parse metadata for track number
+        std::string track_num_as_str = marker.track_meta.substr(0, pos);
+        size_t track_num = std::stol(track_num_as_str);
+        if (songs_to_skip.front() == track_num) // Dont play song because it got removed
+        {
+            if (marker.voice_client != nullptr)
+            {
+                marker.voice_client->skip_to_next_marker();
+                marker.voice_client->creator->log(dpp::loglevel::ll_info, "Song skipped successfully");
+            }
+            else
+                marker.voice_client->creator->log(dpp::loglevel::ll_warning, "No voice client. Could not skip");
+            songs_to_skip.pop(); // pop off queue
+        }
+    } 
+    else
+    {
+        if (!marker.track_meta.empty())
+            marker.voice_client->creator->log(dpp::loglevel::ll_warning, std::string("Marker could not be parsed correctly\n\tMetadata: " + marker.track_meta));
+    }
 }
 
 void discord::join(dpp::cluster& bot, const dpp::slashcommand_t& event)
@@ -306,9 +334,9 @@ void discord::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                 event.reply("Queueing " + url);
             else
                 event.reply("Playing next: " + url);
-            send_music_buff(current_vc->voiceclient, url);
+            send_music_buff(current_vc->voiceclient, url, current_vc->voiceclient->is_playing());
         }
-        else // on_voice_ready will invoke send_music_buff
+        else // wait for voice to connect
         {
             event.reply("Playing " + url);
         }
@@ -409,18 +437,16 @@ void discord::remove(const dpp::slashcommand_t &event)
             std::string numbers = std::get<std::string>(event.get_parameter("number"));
             if (!numbers.empty())
             {
-                int num = std::stoi(numbers.substr(0, 1));
-                if (num <= voice_conn->voiceclient->get_tracks_remaining()) // number to remove is within the range of songs queued
+                size_t num = std::stol(numbers.substr(0, numbers.size()));
+                if (num < voice_conn->voiceclient->get_tracks_remaining()) // number to remove is within the range of songs queued
                 {
                     // try to add to map
-                    auto map_search = songs_to_skip.find(event.command.guild_id);
-                    if (map_search != songs_to_skip.end()) // exists. need to add number
-                    {
-                        auto guild_songs_to_skip = map_search->second;
-                    }
+                    songs_to_skip.push(num);
+                    event.from->log(dpp::loglevel::ll_info, numbers + " to be skipped");
+                    event.reply("Track " + numbers + " was removed from queue");
                 }
                 else
-                    event.reply("Could not remove track " + numbers.substr(0, 1) + ". Does not exist");
+                    event.reply("Could not remove track " + numbers.substr(0, numbers.size()) + ". Does not exist");
             }
         }
         else
