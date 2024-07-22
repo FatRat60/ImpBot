@@ -213,6 +213,29 @@ void discord::handle_marker(const dpp::voice_track_marker_t &marker)
     }
 }
 
+dpp::embed discord::create_list_embed(std::string title, std::string footer, std::string contents[10], int num_comp /*=10*/)
+{
+    // init embed with default vals
+    dpp::embed embed = dpp::embed()
+        .set_color(dpp::colors::pink_rose)
+        .set_title(title)
+        .set_footer(
+            dpp::embed_footer()
+            .set_text(footer)
+        )
+        .set_timestamp(time(0));
+
+    // loop through contents and add fields
+    for (int i = 0; i < num_comp; i++)
+    {
+        embed.add_field(std::to_string(i+1) + ". ",
+            contents[i]);
+    }
+
+    // return new embed
+    return embed;
+}
+
 void discord::join(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
     dpp::guild *g = dpp::find_guild(event.command.guild_id);
@@ -410,15 +433,33 @@ void discord::queue(const dpp::slashcommand_t &event)
     auto voice_conn = event.from->get_voice(event.command.guild_id);
     if (voice_conn) // bot is connected
     {
-        if (voice_conn->voiceclient->get_tracks_remaining() > 1) // there is actually music playing
+        if (voice_conn->voiceclient->get_tracks_remaining() > 2) // there is actually music playing
         {
             const std::vector<std::string>& metadata = voice_conn->voiceclient->get_marker_metadata(); // get metadata
-            std::string msg;
+            std::string contents[MAX_EMBED_VALUES];
+            int num_songs = 0;
             // create embed of queue
             for (std::string marker : metadata)
-                msg += marker + "\n";
+            {
+                if (marker.empty()) // Marker denotes end of song and should not be counted
+                    continue;
+                
+                // get marker data
+                if (num_songs < MAX_EMBED_VALUES)
+                {
+                    size_t pos = marker.find(' ');
+                    if (pos == std::string::npos) // poor marker data
+                        continue;
+                    std::string song_data = marker.substr(pos+1);
+                    contents[num_songs] = song_data;
+                }
+
+                // inc num songs
+                num_songs++;
+            }
             // send embed
-            event.reply(msg);
+            dpp::embed queue_embed = create_list_embed("Queue", std::to_string(num_songs) + " songs", contents, num_songs < MAX_EMBED_VALUES ? num_songs : MAX_EMBED_VALUES);
+            event.reply(dpp::message(event.command.channel_id, queue_embed));
         }
         else
             event.reply("No songs in queue");
