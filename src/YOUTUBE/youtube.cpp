@@ -25,27 +25,16 @@ std::string youtube::pipe_replace(std::string& query)
     return q;
 }
 
-std::string youtube::post_search(dpp::http_request_completion_t result)
+void youtube::post_search(dpp::http_request_completion_t result, song& youtube_song)
 {
-    size_t ind = result.body.find('[');
-    std::string found_url;
-    if (result.status == 200 && ind != std::string::npos)
+    dpp::json json = dpp::json::parse(result.body);
+    // You really need to implement JSON here, lazy ass
+    if (!json["items"].empty())
     {
-        char char_path[] = {'{', '{', ':', ':'};
-        for (int i = 0; i < 4; i++){
-            ind = result.body.find(char_path[i], ind + 1);
-            if (ind == std::string::npos)
-                break;
-        }
-
-        if (ind != std::string::npos)
-        {
-            size_t end = result.body.find('\n', ind);
-            ind += 3;
-            found_url = YOUTUBE_URL + result.body.substr(ind, end - ind - 1);
-        }
+        youtube_song.url = YOUTUBE_URL;
+        youtube_song.url += json["items"][0]["id"]["videoId"];
+        youtube_song.title = json["items"][0]["snippet"]["title"];
     }
-    return found_url;
 }
 
 /*Used by discord bot in /play to download songs*/

@@ -27,7 +27,7 @@ class discord
     public:
         static void handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event);
         static void register_events(dpp::cluster& bot, const dpp::ready_t& event, bool doRegister, bool doDelete);
-        static void send_music_buff(dpp::discord_voice_client *voice_client, std::string& url, bool add_start_marker);
+        static void send_music_buff(dpp::discord_voice_client *voice_client, std::string& song_data, bool add_start_marker);
         static void hello(dpp::discord_voice_client *voice_client);
         static void handle_marker(const dpp::voice_track_marker_t& marker);
         static dpp::embed create_list_embed(std::string title, std::string footer, std::string contents[10], int num_comp);

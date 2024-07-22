@@ -114,7 +114,7 @@ void discord::ping(const dpp::slashcommand_t& event)
     event.reply("Pong!");
 }
 
-void discord::send_music_buff(dpp::discord_voice_client *voice_client, std::string& url, bool add_start_marker)
+void discord::send_music_buff(dpp::discord_voice_client *voice_client, std::string& song_data, bool add_start_marker)
 {
     // wait for download to finish
     if (download_thread.joinable())
@@ -138,7 +138,7 @@ void discord::send_music_buff(dpp::discord_voice_client *voice_client, std::stri
         if (add_start_marker) // song already in buffer FIGURE OUT THIS
         {
             std::string track = std::to_string((voice_client->get_tracks_remaining() / 2) - songs_to_skip.size());
-            voice_client->insert_marker(track + " " + url); // marker indicating new song in form "trackNo url"
+            voice_client->insert_marker(track + " " + song_data); // marker indicating new song in form "trackNo url"
             voice_client->log(dpp::loglevel::ll_info, "Track " + track + " has been queued");
         }
 
@@ -310,58 +310,55 @@ void discord::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
     // query youtube if joined channel AND API key is init'd
     if (doMusic)
     {
-        std::string url = std::get<std::string>(event.get_parameter("link"));
-        if (!youtube::isLink(url)) // have to search using api
+        song youtube_song;
+        std::string search_term = std::get<std::string>(event.get_parameter("link"));
+        if (youtube::canSearch()) // Youtube API key exists
         {
-            if (youtube::canSearch()) // Youtube API key exists
+            // make req
+            dpp::http_request req(
+                std::string(YOUTUBE_ENDPOINT) + std::string("?part=snippet&maxResults=1&type=video&q=") + youtube::pipe_replace(search_term) + std::string("&key=") + youtube::getKey(),
+                nullptr,
+                dpp::m_get
+            );
+            dpp::http_request_completion_t result = req.run(&bot);
+            // parse response
+            if (result.status == 200)
             {
-                // make req
-                dpp::http_request req(
-                    std::string(YOUTUBE_ENDPOINT) + std::string("?part=snippet&maxResults=1&type=video&q=") + youtube::pipe_replace(url) + std::string("&key=") + youtube::getKey(),
-                    nullptr,
-                    dpp::m_get
-                );
-                dpp::http_request_completion_t result = req.run(&bot);
-
-                // parse response
-                if (result.status == 200)
+                youtube::post_search(result, youtube_song);
+                if (youtube_song.url.empty())
                 {
-                    url = youtube::post_search(result);
-                    if (url.empty())
-                    {
-                        event.reply("No results found. Please try again");
-                        return;
-                    }
-                }
-                else
-                {
-                    event.reply("Authorization failed. Regenerate API key");
+                    event.reply("No results found. Please try again");
                     return;
                 }
             }
-            else // API key not found. Only links can be used
+            else
             {
-                event.reply("Youtube search not available. Please provide a link");
+                event.reply("Authorization failed. Regenerate API key");
                 return;
             }
+        }
+        else // API key not found. Only links can be used
+        {
+            event.reply("Youtube search not available. Tell kyle's dumbass to regenerate the API key");
+            return;
         }
         bot.log(dpp::loglevel::ll_info, "Start Download");
 
         // download url
         while (download_thread.joinable()){} // thread hasnt been joined by send_music_buff yet
-        download_thread = std::thread(youtube::download, url); // launch thread
+        download_thread = std::thread(youtube::download, youtube_song.url); // launch thread
 
-        if (!join_vc) // manually call send_music_buff since on_voice_ready wont trigger
+        if (!join_vc)
         {
             if (current_vc->voiceclient->get_tracks_remaining() > 1)
-                event.reply("Queueing " + url);
+                event.reply("Queueing " + youtube_song.url);
             else
-                event.reply("Playing next: " + url);
-            send_music_buff(current_vc->voiceclient, url, current_vc->voiceclient->is_playing());
+                event.reply("Playing next: " + youtube_song.url);
+            send_music_buff(current_vc->voiceclient, youtube_song.title, current_vc->voiceclient->is_playing());
         }
         else // wait for voice to connect
         {
-            event.reply("Playing " + url);
+            event.reply("Playing " + youtube_song.url);
         }
     }
 }

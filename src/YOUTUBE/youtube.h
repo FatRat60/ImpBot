@@ -10,6 +10,13 @@
 #define TRACK_FILE "temp/song.opus"
 #define YUI "resources/yaharo.opus"
 
+struct song
+{
+    std::string url;
+    std::string title;
+    std::string duration;
+};
+
 class youtube
 {
     private:
@@ -20,7 +27,7 @@ class youtube
         static std::string getKey() { return YOUTUBE_API_KEY; }
         static bool canSearch() { return !YOUTUBE_API_KEY.empty(); }
         static void setAPIkey(std::string API_KEY) { YOUTUBE_API_KEY = API_KEY; }
-        static std::string post_search(dpp::http_request_completion_t result);
+        static void post_search(dpp::http_request_completion_t result, song& youtube_song);
         static void download(std::string url);
 };  
 
