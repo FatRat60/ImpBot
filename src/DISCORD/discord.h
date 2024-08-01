@@ -19,7 +19,9 @@ enum command_name
     STOP,
     SKIP,
     QUEUE,
-    REMOVE
+    REMOVE,
+    START,
+    TERMINATE
 };
 
 class discord

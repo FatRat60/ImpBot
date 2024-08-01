@@ -5,6 +5,7 @@ project(${PROJ_NAME} VERSION 0.1.0 LANGUAGES C CXX)
 add_executable(${PROJ_NAME} 
     ${PROJECT_SOURCE_DIR}/src/ENV/parseENV.c
     ${PROJECT_SOURCE_DIR}/src/YOUTUBE/youtube.cpp
+    ${PROJECT_SOURCE_DIR}/src/SERVER/server.cpp
     ${PROJECT_SOURCE_DIR}/src/DISCORD/discord.cpp
     ${PROJECT_SOURCE_DIR}/src/main.cpp
 )
@@ -13,9 +14,10 @@ target_include_directories(${PROJ_NAME} PRIVATE
     ${PROJECT_SOURCE_DIR}/src/ENV/
     ${PROJECT_SOURCE_DIR}/src/DISCORD/
     ${PROJECT_SOURCE_DIR}/src/YOUTUBE/
+    ${PROJECT_SOURCE_DIR}/src/SERVER/
 )
 
-target_link_libraries(${PROJ_NAME} dpp oggz)
+target_link_libraries(${PROJ_NAME} dpp oggz yaml-cpp)
 
 set_target_properties(${PROJ_NAME} PROPERTIES
 CXX_STANDARD 17

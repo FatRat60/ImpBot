@@ -1,5 +1,6 @@
 #include "discord.h"
 #include "youtube.h"
+#include "server.h"
 #include <oggz/oggz.h>
 
 std::unordered_map<std::string, command_name> discord::command_map;
@@ -35,12 +36,21 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
         removecmd.add_option(
             dpp::command_option(dpp::co_string, "number", "Track number to remove. Seperate by commas and use 1:5 to denote a range", true)
         );
+        dpp::slashcommand startcmd("start", "Starts the designated game server", bot.me.id);
+        startcmd.add_option(
+            dpp::command_option(dpp::co_string, "name", "type of server to start", true).set_auto_complete(true)
+        );
+        dpp::slashcommand terminatecmd("terminate", "Shuts down the currently active game server", bot.me.id);
+        terminatecmd.add_option(
+            dpp::command_option(dpp::co_boolean, "restart", "If true, will restart the server after shutdown")
+        );
 
         const std::vector<dpp::slashcommand> commands = { 
             pingcmd, joincmd, leavecmd, playcmd,
             pausecmd, stopcmd, skipcmd, queuecmd,
-            removecmd
-         };
+            removecmd, startcmd, terminatecmd
+        };
+        
     
         bot.global_bulk_command_create(commands);
     }
@@ -58,6 +68,8 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
         command_map.insert({"skip", SKIP});
         command_map.insert({"queue", QUEUE});
         command_map.insert({"remove", REMOVE});
+        command_map.insert({"start", START});
+        command_map.insert({"terminate", TERMINATE});
     }
 }
 
@@ -102,6 +114,14 @@ void discord::handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event)
 
         case REMOVE:
             remove(event);
+            break;
+
+        case START:
+            server::start(event);
+            break;
+
+        case TERMINATE:
+            server::terminate(event);
             break;
         }
     }
