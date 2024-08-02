@@ -25,11 +25,14 @@ int main(int argc, char *argv[])
         var2 = get_env_var("SERVER_BASE_DIR");
         if (var2)
             server::setDir(std::string(var2));
-
+            
         std::string TOKEN(var);
         dpp::cluster bot(TOKEN, dpp::i_default_intents | dpp::i_message_content);
 
         bot.on_log(dpp::utility::cout_logger());
+
+        // check for active server
+        server::checkForActiveServer(bot);
 
         // handle incoming slash commands
         bot.on_slashcommand([&bot](const dpp::slashcommand_t& event){ discord::handle_slash(bot, event); });
