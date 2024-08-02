@@ -21,7 +21,8 @@ enum command_name
     QUEUE,
     REMOVE,
     START,
-    TERMINATE
+    TERMINATE,
+    IP
 };
 
 class discord

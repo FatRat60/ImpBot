@@ -44,11 +44,12 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
         terminatecmd.add_option(
             dpp::command_option(dpp::co_boolean, "restart", "If true, will restart the server after shutdown")
         );
+        dpp::slashcommand ipcmd("ip", "I'll slide into your DMs with the server ip <3", bot.me.id);
 
         const std::vector<dpp::slashcommand> commands = { 
             pingcmd, joincmd, leavecmd, playcmd,
             pausecmd, stopcmd, skipcmd, queuecmd,
-            removecmd, startcmd, terminatecmd
+            removecmd, startcmd, terminatecmd, ipcmd
         };
         
     
@@ -70,6 +71,7 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
         command_map.insert({"remove", REMOVE});
         command_map.insert({"start", START});
         command_map.insert({"terminate", TERMINATE});
+        command_map.insert({"ip", IP});
     }
 }
 
@@ -122,6 +124,10 @@ void discord::handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event)
 
         case TERMINATE:
             server::terminate(event);
+            break;
+
+        case IP:
+            server::ip(bot, event);
             break;
         }
     }
