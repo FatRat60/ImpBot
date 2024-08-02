@@ -43,8 +43,6 @@ int main(int argc, char *argv[])
             if (vc)
             {
                 discord::hello(vc); // bot greeting
-                std::string url; // first song wont appear in queue so no url needed
-                discord::send_music_buff(vc, url, false);
             }
         });
 

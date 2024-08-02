@@ -9,6 +9,13 @@
 #define YOUTUBE_URL "https://www.youtube.com/watch?v="
 #define TRACK_FILE "temp/song.opus"
 #define YUI "resources/yaharo.opus"
+#define MAX_EMBED_VALUES 10
+
+enum song_type {
+    video,
+    playlist,
+    livestrean
+};
 
 struct song
 {
@@ -19,16 +26,22 @@ struct song
 
 class youtube
 {
+    public:
+        static void play(dpp::cluster& bot, const dpp::slashcommand_t& event);
+        static void pause(dpp::cluster& bot, const dpp::slashcommand_t& event);
+        static void stop(dpp::cluster& bot, const dpp::slashcommand_t& event);
+        static void skip(dpp::cluster& bot, const dpp::slashcommand_t& event);
+        static void queue(const dpp::slashcommand_t& event);
+        static void remove(const dpp::slashcommand_t& event);
+        static void setAPIkey(std::string API_KEY) { YOUTUBE_API_KEY = API_KEY;}
     private:
         static std::string YOUTUBE_API_KEY;
-    public:
         static bool isLink(std::string& query); // returns true if query begins with "https://"
         static std::string pipe_replace(std::string& query);
-        static std::string getKey() { return YOUTUBE_API_KEY; }
-        static bool canSearch() { return !YOUTUBE_API_KEY.empty(); }
-        static void setAPIkey(std::string API_KEY) { YOUTUBE_API_KEY = API_KEY; }
-        static void post_search(dpp::http_request_completion_t result, song& youtube_song);
+        static void post_search(const dpp::slashcommand_t& event, dpp::json& body);
         static void download(std::string url);
+        static void send_music_buff(dpp::discord_voice_client *voice_client, std::string& song_data, bool add_start_marker);
+        static dpp::embed create_list_embed(std::string title, std::string footer, std::string contents[10], int num_comp);
 };  
 
 #endif
