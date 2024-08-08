@@ -1,32 +1,73 @@
 #include "youtube.h"
 #include <iostream>
 #include <cstdlib>
+#include <memory>
+#include <stdio.h>
 
-// yt-dlp -x --audio-format opus -o test.opus -S +size --no-playlist --force-overwrites --fixup never --extractor-args youtube:player_client=web URL
+// yt-dlp -q --no-warnings -x --audio-format opus -o - -S +size --no-playlist 
+// "yt-dlp -f 140 -q --no-warnings -o - --no-playlist " + youtube_song.url + " | ffmpeg -i pipe:.m4a -c:a libopus -ar 48000 -ac 2 -loglevel quiet pipe:.opus";
 
 std::string youtube::YOUTUBE_API_KEY;
 
-bool youtube::isLink(std::string& query)
+int youtube::parseLink(std::string& link, std::string& query)
 {
-    return query.substr(0, 8).compare("https://") == 0;
-}
-
-std::string youtube::pipe_replace(std::string& query)
-{
-    std::string q;
-    size_t cur_ind = 0;
-    size_t nex_ind;
-    while ( (nex_ind = query.find(' ', cur_ind)) != std::string::npos)
+    // tenemos un enlace
+    if (link.substr(0, 8) == "https://")
     {
-        q += query.substr(cur_ind, nex_ind - cur_ind) + "%2C";
-        cur_ind = nex_ind + 1; // start at char to right of space we just found
+        size_t slash = link.find('/', 8);
+        std::string platform = link.substr(8, slash - 8);
+        // YOUTUBE
+        if (platform == "www.youtube.com" || platform == "youtube.com" || platform == "youtu.be")
+        {
+            size_t mark = link.find('?', slash+1);
+            std::string type = link.substr(slash+1, mark - (slash+1));
+            if (type == "playlist")
+            {
+                std::string id = link.substr(link.find('=', mark)+1);
+                size_t aaron = id.find('&');
+                if (aaron != std::string::npos)
+                    id = id.substr(0, aaron);
+                query = id;
+                return 1;
+            }
+            else if (type == "watch")
+            {
+                query = link.substr(link.find('=', mark)+1);
+                return 0;
+            }
+            else
+            {
+                size_t ind = type.find('/');
+                if (ind != std::string::npos)
+                    type = type.substr(ind+1);
+                query = type;
+                return 0;
+            }
+        }
+        else if (platform == "soundcloud.com")
+        {
+            return 2;
+        }
+        else
+            return 69;
     }
-    q += query.substr(cur_ind, query.length() - cur_ind);
-    return q;
+    else
+    {
+        query = link;
+        return 0;
+    }
 }
 
-void youtube::post_search(const dpp::slashcommand_t& event, dpp::json& body)
+void youtube::post_search(const dpp::slashcommand_t& event, const dpp::http_request_completion_t& request)
 {
+    if (request.status != 200)
+    {
+        event.reply(request.status == 403 ? "Rate-limited. Try again tmw :(" : "There was an error searching youtube.");
+        return;
+    }
+
+    dpp::json body = dpp::json::parse(request.body);
+
     song youtube_song;
     // You really need to implement JSON here, lazy ass
     if (!body["items"].empty())
@@ -34,6 +75,45 @@ void youtube::post_search(const dpp::slashcommand_t& event, dpp::json& body)
         youtube_song.url = YOUTUBE_URL;
         youtube_song.url += body["items"][0]["id"]["videoId"];
         youtube_song.title = body["items"][0]["snippet"]["title"];
+        youtube_song.thumbnail = body["items"][0]["snippet"]["thumbnails"]["default"]["url"];
+        // song type
+        if (body["items"][0]["liveBroadcastContent"] == "none")
+            youtube_song.type = video;
+        else
+            youtube_song.type = livestrean;
+
+        event.reply("Playing " + youtube_song.url);
+
+        // wait for vc
+        dpp::voiceconn* voice = nullptr;
+        while ( (voice = event.from->get_voice(event.command.guild_id))->voiceclient == nullptr){}
+
+        std::string cmd = "yt-dlp -f 140 -q --no-warnings -o - --no-playlist " + youtube_song.url + " | ffmpeg -i pipe:.m4a -f s16le -ar 48000 -ac 2 -loglevel quiet pipe:.pcm";
+        std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+        if (!pipe)
+        {
+            event.edit_original_response(dpp::message("Error on pipe. Could not download song"));
+            return;
+        }
+
+        constexpr size_t buffsize = dpp::send_audio_raw_max_length;
+        char buffer[dpp::send_audio_raw_max_length];
+        size_t curr_read = 0;
+        while (!voice->voiceclient->terminating && (curr_read = fread(buffer, sizeof(char), buffsize, pipe.get())) == buffsize) 
+        {
+            voice->voiceclient->send_audio_raw((uint16_t*)buffer, curr_read); 
+        }
+
+        // leftover bytes in buffer
+        if (curr_read > 0)
+        {
+            int rem = curr_read % 4;
+            voice->voiceclient->send_audio_raw((uint16_t*)buffer, curr_read - rem);
+        }
+    }
+    else
+    {
+        event.reply("No songs found from that query");
     }
 }
 
@@ -107,22 +187,42 @@ void youtube::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
         if (!YOUTUBE_API_KEY.empty()) // Youtube API key exists
         {
             //  TODO parse search term
+            std::string query;
+            int type = parseLink(search_term, query);
+
+            std::string get_url;
+            switch (type)
+            {
+            // youtube - video/livestream
+            case 0:
+                get_url = std::string(YOUTUBE_ENDPOINT) + "/search?part=snippet&maxResults=1&type=video&q=" + dpp::utility::url_encode(query) + std::string("&key=") + YOUTUBE_API_KEY;
+                break;
+            
+            // youtube - playlist
+            case 1:
+                //get_url = std::string(YOUTUBE_ENDPOINT) + "/playlists?part=snippet,contentDetails&maxResults=1&id=" + query + std::string("&key=") + YOUTUBE_API_KEY;
+                event.reply("Playlists are not supported yet. Only lives or videos");
+                return;
+                break;
+
+            // soundcloud?
+            case 2:
+                event.reply("Soundcloud is not yet supported. Plzz stick to youtube links");
+                return;
+                break;
+
+            // spotify, etc
+            default:
+                event.reply("This bot does not currently support this platform");
+                return;
+                break;
+            }
 
             // make req
             bot.request(
-                std::string(YOUTUBE_ENDPOINT) + std::string("?part=snippet&maxResults=1&type=video&q=") + dpp::utility::url_encode(search_term)  + std::string("&key=") + YOUTUBE_API_KEY,
+                get_url,
                 dpp::m_get, [event](const dpp::http_request_completion_t& request){
-                    if (request.status == 403)
-                        event.reply(dpp::message("Rate limited for today. Please try again tmw :("));
-                    else if (request.status == 200)
-                    {
-                        std::cout << request.body << "\n";
-                        /*
-                        dpp::json body = dpp::json::parse(request.body);
-                        youtube::post_search(event, body);*/
-                    }
-                    else
-                        event.reply(dpp::message("There was an error searching youtube. Could not add song"));
+                    youtube::post_search(event, request);
                 }
             );
         }
