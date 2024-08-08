@@ -90,6 +90,8 @@ dpp::embed server::createServerEmbed()
             server_embed.add_field("Game", "Minecraft");
             if (env["CF_SLUG"])
                 server_embed.add_field("Mod Pack", env["CF_SLUG"].as<std::string>());
+            else
+                server_embed.add_field("Mod Pack", "Vanilla");
             if (env["VERSION"])
                 server_embed.add_field("Game Version", env["VERSION"].as<std::string>());
         }
@@ -149,9 +151,14 @@ void server::start(const dpp::slashcommand_t& event)
                         }
                         else
                         {
+                            dpp::message msg = dpp::message("Could not start server. Refer to the attached log file");
                             cmd = "docker compose -f " + path + "/docker-compose.yml stop";
                             event.edit_original_response(dpp::message("Could not start server"));
                             system(cmd.c_str());
+                            cmd = "docker compose -f " + path + "/docker-compose.yml logs >> log.txt";
+                            system(cmd.c_str());
+                            msg.add_file("log.txt", dpp::utility::read_file(path + std::string("/log.txt")));
+                            event.edit_original_response(msg);
                         }
                     }
                 });
