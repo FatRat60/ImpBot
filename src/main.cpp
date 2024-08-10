@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
         });
 
         // handle passing marker in audio
-        bot.on_voice_track_marker([](const dpp::voice_track_marker_t& marker){ discord::handle_marker(marker); });
+        bot.on_voice_track_marker([](const dpp::voice_track_marker_t& marker){ youtube::handle_marker(marker); });
 
         // handle autocomplete
         bot.on_autocomplete([&bot](const dpp::autocomplete_t& event) {

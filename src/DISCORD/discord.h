@@ -29,7 +29,7 @@ class discord
         static void handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event);
         static void register_events(dpp::cluster& bot, const dpp::ready_t& event, bool doRegister, bool doDelete);
         static void hello(dpp::discord_voice_client *voice_client);
-        static void handle_marker(const dpp::voice_track_marker_t& marker);
+        
     private:
         static std::unordered_map<std::string, command_name> command_map; // map commands to command name enum
         static void ping(const dpp::slashcommand_t& event);

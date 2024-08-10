@@ -164,35 +164,6 @@ void discord::hello(dpp::discord_voice_client *voice_client)
     }
 }
 
-void discord::handle_marker(const dpp::voice_track_marker_t &marker)
-{
-    // Checks if marker is to be skipped. If so will invoke skip_to_next_marker()
-    // Parse marker for number
-    size_t pos = marker.track_meta.find(' ');
-    if (pos != std::string::npos) // found space
-    {
-        std::cout << "Handling marker\n";
-        // parse metadata for track number
-        std::string track_num_as_str = marker.track_meta.substr(0, pos);
-        size_t track_num = std::stol(track_num_as_str);
-        if (track_num == track_num) // Dont play song because it got removed
-        {
-            if (marker.voice_client != nullptr)
-            {
-                marker.voice_client->skip_to_next_marker();
-                marker.voice_client->creator->log(dpp::loglevel::ll_info, "Song skipped successfully");
-            }
-            else
-                marker.voice_client->creator->log(dpp::loglevel::ll_warning, "No voice client. Could not skip");
-        }
-    } 
-    else
-    {
-        if (!marker.track_meta.empty())
-            marker.voice_client->creator->log(dpp::loglevel::ll_warning, std::string("Marker could not be parsed correctly\n\tMetadata: " + marker.track_meta));
-    }
-}
-
 void discord::join(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
     dpp::guild *g = dpp::find_guild(event.command.guild_id);
