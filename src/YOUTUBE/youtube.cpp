@@ -8,6 +8,8 @@
 // "yt-dlp -f 140 -q --no-warnings -o - --no-playlist " + youtube_song.url + " | ffmpeg -i pipe:.m4a -c:a libopus -ar 48000 -ac 2 -loglevel quiet pipe:.opus";
 
 std::string youtube::YOUTUBE_API_KEY;
+std::unordered_map<dpp::snowflake, music_queue*> youtube::queue_map;
+std::mutex youtube::queue_map_mutex;
 
 int youtube::parseLink(std::string& link, std::string& query)
 {
@@ -77,10 +79,10 @@ void youtube::post_search(const dpp::slashcommand_t& event, const dpp::http_requ
         youtube_song.title = body["items"][0]["snippet"]["title"];
         youtube_song.thumbnail = body["items"][0]["snippet"]["thumbnails"]["default"]["url"];
         // song type
-        if (body["items"][0]["liveBroadcastContent"] == "none")
+        if (body["items"][0]["snippet"]["liveBroadcastContent"] == "none")
             youtube_song.type = video;
         else
-            youtube_song.type = livestrean;
+            youtube_song.type = livestream;
 
         event.reply("Playing " + youtube_song.url);
 
@@ -88,45 +90,16 @@ void youtube::post_search(const dpp::slashcommand_t& event, const dpp::http_requ
         dpp::voiceconn* voice = nullptr;
         while ( (voice = event.from->get_voice(event.command.guild_id))->voiceclient == nullptr){}
 
-        std::string cmd = "yt-dlp -f 140 -q --no-warnings -o - --no-playlist " + youtube_song.url + " | ffmpeg -i pipe:.m4a -f s16le -ar 48000 -ac 2 -loglevel quiet pipe:.pcm";
-        std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
-        if (!pipe)
-        {
-            event.edit_original_response(dpp::message("Error on pipe. Could not download song"));
-            return;
-        }
+        // get queue
+        music_queue& curr_queue = getQueue(event.command.guild_id);
 
-        constexpr size_t buffsize = dpp::send_audio_raw_max_length;
-        char buffer[dpp::send_audio_raw_max_length];
-        size_t curr_read = 0;
-        while (!voice->voiceclient->terminating && (curr_read = fread(buffer, sizeof(char), buffsize, pipe.get())) == buffsize) 
-        {
-            voice->voiceclient->send_audio_raw((uint16_t*)buffer, curr_read); 
-        }
-
-        // leftover bytes in buffer
-        if (curr_read > 0)
-        {
-            int rem = curr_read % 4;
-            voice->voiceclient->send_audio_raw((uint16_t*)buffer, curr_read - rem);
-        }
+        if (!curr_queue.enqueue(voice->voiceclient, youtube_song))
+            event.edit_original_response(dpp::message("There was an issue.\n" + youtube_song.title + " was not added to queue."));
     }
     else
     {
         event.reply("No songs found from that query");
     }
-}
-
-/*Used by discord bot in /play to download songs*/
-void youtube::download(std::string url)
-{
-    std::string command = "\"yt-dlp\" \"-x\" \"--audio-format\" \"opus\" \"-o\" \"temp/song.opus\" \"-S\" \"+size\" \"--no-playlist\" \"--force-overwrites\" \"--fixup\" \"never\" \"--extractor-args\" \"youtube:player_client=web\" \"" + url + "\"";
-    system(command.c_str());
-}
-
-void youtube::send_music_buff(dpp::discord_voice_client *voice_client, std::string& song_data, bool add_start_marker)
-{
-    
 }
 
 dpp::embed youtube::create_list_embed(std::string title, std::string footer, std::string contents[10], int num_comp /*=10*/)
@@ -222,6 +195,7 @@ void youtube::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
             bot.request(
                 get_url,
                 dpp::m_get, [event](const dpp::http_request_completion_t& request){
+                    //std::cout << request.body;
                     youtube::post_search(event, request);
                 }
             );
@@ -285,7 +259,11 @@ void youtube::skip(dpp::cluster& bot, const dpp::slashcommand_t& event)
         if (voice_client->is_playing())
         {
             event.reply("Skipped");
-            voice_client->skip_to_next_marker();
+            std::thread t([voice_client]() {
+                music_queue& queue = youtube::getQueue(voice_client->server_id);
+                queue.skip(voice_client);
+            });
+            t.detach();
         }
         else
         {
@@ -363,4 +341,36 @@ void youtube::remove(const dpp::slashcommand_t &event)
     }
     else
         event.reply("Not in voice");
+}
+
+music_queue& youtube::getQueue(const dpp::snowflake guild_id)
+{
+    std::lock_guard<std::mutex> guard(queue_map_mutex);
+
+    auto res = queue_map.find(guild_id);
+    music_queue* found_queue;
+    if (res == queue_map.end())
+    {
+        found_queue = new music_queue();
+        queue_map.insert({guild_id, found_queue});
+    }
+    else
+        found_queue = res->second;
+
+    return *found_queue;
+}
+
+void youtube::handle_marker(const dpp::voice_track_marker_t &marker)
+{
+    // Checks if marker is to be skipped. If so will invoke skip_to_next_marker()
+    // Parse marker for number
+    if (marker.track_meta == "end") // found space
+    {
+        std::cout << "Handling marker\n";
+        std::thread t([marker]() {
+            music_queue& queue = youtube::getQueue(marker.voice_client->server_id);
+            queue.go_next(marker.voice_client);
+        });
+        t.detach();
+    }
 }
