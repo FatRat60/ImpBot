@@ -33,7 +33,7 @@ After streaming to discord, download next song if exists to resources/next.pcm
 If no track is next, return false, else true*/
 bool music_queue::go_next(dpp::discord_voice_client* vc)
 {
-    std::unique_lock<std::mutex> guard(queue_mutex);
+    std::lock_guard<std::mutex> guard(queue_mutex);
 
     if (!queue.empty())
     {
@@ -161,16 +161,21 @@ bool music_queue::handle_download(dpp::discord_voice_client* vc)
     char buffer[dpp::send_audio_raw_max_length];
     size_t curr_read = 0;
 
+    std::cout << "begin\n";
     while (!vc->terminating && !stopLivestream && (curr_read = fread(buffer, sizeof(char), buffsize, pipe.get())) == buffsize)
         vc->send_audio_raw((uint16_t*)buffer, buffsize);
 
+    std::cout << "middle\n";
     if (!vc->terminating && !stopLivestream && curr_read > 0)
     {
         int rem = curr_read % 4;
         vc->send_audio_raw((uint16_t*)buffer, curr_read-rem);
     }
-    vc->insert_marker("end");
+    std::cout << "end\n";
+    if (!vc->terminating)
+        vc->insert_marker("end");
 
+    std::cout << "end end\n";
     return true;
 }
 

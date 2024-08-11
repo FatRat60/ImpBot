@@ -289,10 +289,10 @@ void youtube::remove(const dpp::slashcommand_t &event)
                 event.reply("Removing track number " + numbers + "...");
                 if (queue.remove_from_queue(num)) // number to remove is within the range of songs queued
                 {
-                    event.reply("Track " + numbers + " was removed from queue");
+                    event.edit_original_response(dpp::message("Track " + numbers + " was removed from queue"));
                 }
                 else
-                    event.reply("Could not remove track " + numbers);
+                    event.edit_original_response(dpp::message("Could not remove track " + numbers));
             }
         }
         else
@@ -327,8 +327,11 @@ void youtube::handle_marker(const dpp::voice_track_marker_t &marker)
     {
         std::cout << "Handling marker\n";
         std::thread t([marker]() {
-            music_queue& queue = *youtube::getQueue(marker.voice_client->server_id);
-            queue.go_next(marker.voice_client);
+            if (!marker.voice_client->terminating)
+            {
+                music_queue& queue = *youtube::getQueue(marker.voice_client->server_id);
+                queue.go_next(marker.voice_client);
+            }
         });
         t.detach();
     }
