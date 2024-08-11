@@ -6,6 +6,7 @@
 #include <deque>
 
 #define NEXT_SONG "resources/next.pcm"
+#define MAX_EMBED_VALUES 10
 
 enum song_type {
     video,
@@ -28,7 +29,9 @@ class music_queue
         bool enqueue(dpp::discord_voice_client* vc, song& song_to_add);
         bool go_next(dpp::discord_voice_client* vc);
         void skip(dpp::discord_voice_client* vc);
-
+        void clear_queue();
+        bool remove_from_queue(size_t ind);
+        dpp::embed get_queue_embed();
     private:
         std::mutex queue_mutex;
         std::deque<song> queue;
