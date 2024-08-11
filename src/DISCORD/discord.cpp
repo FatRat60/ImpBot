@@ -200,7 +200,9 @@ void discord::leave(dpp::cluster& bot, const dpp::slashcommand_t& event)
     auto current_vc = event.from->get_voice(event.command.guild_id);
     if (current_vc)
     {
+        current_vc->voiceclient->stop_audio();
         event.from->disconnect_voice(event.command.guild_id);
+        youtube::handle_voice_leave(event);
         event.reply("Bye Bye");
     }
     else
