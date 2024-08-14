@@ -325,7 +325,6 @@ void youtube::handle_marker(const dpp::voice_track_marker_t &marker)
     // Parse marker for number
     if (marker.track_meta == "end") // found space
     {
-        std::cout << "Handling marker\n";
         std::thread t([marker]() {
             if (!marker.voice_client->terminating)
             {
