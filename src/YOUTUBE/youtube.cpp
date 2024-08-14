@@ -139,7 +139,8 @@ void youtube::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
             //  TODO parse search term
             std::string query;
             int type = parseLink(search_term, query);
-
+            if (query.front() == '-')
+                query = query.substr(1);
             std::string get_url;
             switch (type)
             {
