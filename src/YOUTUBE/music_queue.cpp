@@ -132,14 +132,14 @@ dpp::embed music_queue::get_queue_embed()
     if (queue.size() > 0)
     {
         // playing now
-        q_embed.add_field("Playing Now:", queue.front().title);
+        q_embed.add_field("Playing Now:", queue.front().title + "\n[" + queue.front().duration + "]");
         q_embed.set_thumbnail(queue.front().thumbnail);
 
         q_embed.add_field("", "");
         q_embed.add_field("Up Next:", "");
         for (int i = 1; i < queue.size() && i < MAX_EMBED_VALUES; i++)
         {
-            q_embed.add_field(std::to_string(i) + ". ", queue.at(i).title);
+            q_embed.add_field(std::to_string(i) + ". ", queue.at(i).title + "\n[" + queue.at(i).duration + "]");
         }
     }
     else
