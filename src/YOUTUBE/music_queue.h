@@ -10,7 +10,6 @@
 
 enum song_type {
     video,
-    playlist,
     livestream
 };
 
@@ -19,6 +18,7 @@ struct song
     song_type type;
     std::string url;
     std::string title;
+    std::string duration;
     std::string thumbnail;
 };
 
