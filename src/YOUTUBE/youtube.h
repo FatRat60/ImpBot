@@ -7,7 +7,8 @@
 #include <unordered_map>
 
 #define YOUTUBE_ENDPOINT "https://www.googleapis.com/youtube/v3"
-#define YOUTUBE_URL "https://www.youtube.com/watch?v="
+#define YOUTUBE_VIDEO_URL "https://www.youtube.com/watch?v="
+#define YOUTUBE_LIST_URL "https://www.youtube.com/playlist?list="
 #define YUI "resources/yaharo.opus"
 
 class youtube
@@ -28,9 +29,9 @@ class youtube
         static std::unordered_map<dpp::snowflake, dpp::timer> timer_map;
         static std::mutex queue_map_mutex;
         static std::mutex timer_map_mutex;
-        static int parseLink(std::string& link, std::string& query);
-        static void post_search(const dpp::slashcommand_t& event, const dpp::http_request_completion_t& request);
-        static dpp::embed create_list_embed(std::string title, std::string footer, std::string contents[10], int num_comp);
+        static song get_song_info(std::string& query);
+        static void handle_video(const dpp::slashcommand_t& event, std::string query);
+        static void handle_playlist(const dpp::slashcommand_t& event, std::string query);
         static music_queue* getQueue(const dpp::snowflake guild_id);
 };  
 
