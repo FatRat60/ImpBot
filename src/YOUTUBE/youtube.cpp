@@ -26,25 +26,8 @@ song youtube::get_song_info(std::string& query)
 
         // clean up data???
         size_t pos = data.rfind('}');
-        
-        try
-        {
-            dpp::json json = dpp::json::parse("{" + data.substr(1, pos));
-            found_song.url += json["id"];
-            found_song.title = json["title"];
-            found_song.duration = json["duration"];
-            found_song.thumbnail = json["thumbnail"];
-            found_song.type = video;
-        }
-        catch(const dpp::json::parse_error& e)
-        {
-            dpp::json json = dpp::json::parse("{" + data.substr(15, pos-14));
-            found_song.url += json["id"];
-            found_song.title = json["title"];
-            found_song.duration = "LIVE";
-            found_song.thumbnail = json["thumbnail"];
-            found_song.type = livestream;
-        }
+
+        found_song = music_queue::create_song("{" + data.substr(1, pos));
     }
     return found_song;
 }
@@ -68,6 +51,17 @@ void youtube::handle_video(const dpp::slashcommand_t& event, std::string query)
         }
     }
     event.edit_original_response(dpp::message("There was an issue queueing that song"));
+}
+
+void youtube::handle_playlist(const dpp::slashcommand_t &event, std::string query)
+{
+    auto voice = event.from->get_voice(event.command.guild_id);
+    while (!voice && !voice->voiceclient)
+        voice = event.from->get_voice(event.command.guild_id);
+
+    music_queue& queue = *getQueue(event.command.guild_id);
+    int tracks_added = queue.playlist_enqueue(voice->voiceclient, query);
+    event.edit_original_response(dpp::message(std::to_string(tracks_added) + " songs added from " + query));
 }
 
 void youtube::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
@@ -121,7 +115,8 @@ void youtube::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                         
                         if (type == "playlist")
                         {
-                            event.edit_original_response(dpp::message("Playlist support coming soon"));
+                            handle_playlist(event, search_term);
+                            //event.edit_original_response(dpp::message("Playlist support coming soon"));
                         }
                         else // video or livestream
                         {
