@@ -180,7 +180,6 @@ bool music_queue::remove_from_queue(size_t ind)
 
 dpp::embed music_queue::get_queue_embed()
 {
-    std::lock_guard<std::mutex> guard(queue_mutex);
 
     size_t size = queue.size();
     dpp::embed q_embed = dpp::embed()
@@ -200,7 +199,7 @@ dpp::embed music_queue::get_queue_embed()
 
         q_embed.add_field("", "");
         q_embed.add_field("Up Next:", "");
-        for (int i = 1; i < queue.size() && i < MAX_EMBED_VALUES; i++)
+        for (int i = 1; i < queue.size() && i <= MAX_EMBED_VALUES; i++)
         {
             q_embed.add_field(std::to_string(i) + ". ", queue.at(i).title + "\n[" + queue.at(i).duration + "]");
         }

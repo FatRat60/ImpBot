@@ -101,7 +101,6 @@ void youtube::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
             event.reply("Searching for " + search_term,
             [event, search_term](const dpp::confirmation_callback_t& callback){
                 std::string link = search_term;
-                std::string url;
                 // user sent a link
                 if (search_term.substr(0, 8) == "https://")
                 {
@@ -111,16 +110,17 @@ void youtube::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                     if (platform == "www.youtube.com" || platform == "youtube.com" || platform == "youtu.be")
                     {
                         size_t mark = search_term.find('?', slash);
-                        std::string type = search_term.substr(slash+1, mark - (slash+1));
+                        size_t aaron = search_term.find("&", mark);
+                        link = search_term.substr(0, aaron);
+                        std::string type = link.substr(slash+1, mark - (slash+1)); 
                         
                         if (type == "playlist")
                         {
-                            handle_playlist(event, search_term);
-                            //event.edit_original_response(dpp::message("Playlist support coming soon"));
+                            handle_playlist(event, link);
                         }
                         else // video or livestream
                         {
-                            handle_video(event, search_term);
+                            handle_video(event, link);
                         }
                     }
                     // youtube music
@@ -133,7 +133,7 @@ void youtube::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                         std::string id = search_term.substr(equals+1, aaron - (equals+1));
                         if (type == "playlist")
                         {
-                            event.edit_original_response(dpp::message("Playlist support coming soon"));
+                            handle_playlist(event, std::string(YOUTUBE_LIST_URL) + id);
                         }
                         else
                         {
