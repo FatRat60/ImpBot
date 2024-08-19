@@ -27,9 +27,36 @@ song youtube::get_song_info(std::string& query)
         // clean up data???
         size_t pos = data.rfind('}');
 
-        found_song = music_queue::create_song("{" + data.substr(1, pos));
+        found_song = create_song("{" + data.substr(1, pos));
     }
     return found_song;
+}
+
+song youtube::create_song(std::string data)
+{
+    song new_song;
+
+    try
+    {
+        dpp::json json = dpp::json::parse(data);
+        new_song.url += json["id"];
+        new_song.title = json["title"];
+        new_song.duration = json["duration"];
+        new_song.thumbnail = json["thumbnail"];
+        new_song.type = video;
+    }
+    catch(const dpp::json::parse_error& e)
+    {
+        //should def make removing duration: much cleaner
+        size_t pos = data.rfind('}');
+        dpp::json json = dpp::json::parse("{" + data.substr(15, pos-14));
+        new_song.url += json["id"];
+        new_song.title = json["title"];
+        new_song.duration = "LIVE";
+        new_song.thumbnail = json["thumbnail"];
+        new_song.type = livestream;
+    }
+    return new_song;
 }
 
 void youtube::handle_video(const dpp::slashcommand_t& event, std::string query)
@@ -59,10 +86,22 @@ void youtube::handle_playlist(const dpp::slashcommand_t &event, std::string quer
     while (!voice || !voice->voiceclient)
         voice = event.from->get_voice(event.command.guild_id);
 
-    music_queue& queue = *getQueue(event.command.guild_id, true);
-    std::cout << "playlist_enqueue\n";
-    int tracks_added = queue.playlist_enqueue(voice->voiceclient, query);
-    event.edit_original_response(dpp::message(std::to_string(tracks_added) + " songs added from " + query));
+    std::string cmd = "yt-dlp -q --no-warnings --print \"{\\\"duration\\\":%(duration_string)j,\\\"id\\\":%(id)j,\\\"title\\\":%(fulltitle)j,\\\"is_live\\\":%(is_live)j,\\\"thumbnail\\\":%(thumbnail)j}\" " + query;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+    size_t num_songs = 0;
+    if (pipe)
+    {
+        music_queue& queue = *getQueue(event.command.guild_id, true);
+        std::array<char, 512> buffer;
+        while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr)
+        {
+            song new_song = create_song(buffer.data());
+            num_songs += !new_song.url.empty();
+            queue.enqueue(voice->voiceclient, new_song);
+        }
+    }
+
+    event.edit_original_response(dpp::message(std::to_string(num_songs) + " songs added from " + query));
 }
 
 void youtube::play(dpp::cluster& bot, const dpp::slashcommand_t& event)

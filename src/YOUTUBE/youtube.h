@@ -31,6 +31,7 @@ class youtube
         static std::mutex queue_map_mutex;
         static std::mutex timer_map_mutex;
         static song get_song_info(std::string& query);
+        static song create_song(std::string data);
         static void handle_video(const dpp::slashcommand_t& event, std::string query);
         static void handle_playlist(const dpp::slashcommand_t& event, std::string query);
         static music_queue* getQueue(const dpp::snowflake guild_id, bool create = false);

@@ -1,32 +1,6 @@
 #include "music_queue.h"
 #include <dpp/unicode_emoji.h>
 
-song music_queue::create_song(std::string data)
-{
-    song new_song;
-
-    try
-    {
-        dpp::json json = dpp::json::parse(data);
-        new_song.url += json["id"];
-        new_song.title = json["title"];
-        new_song.duration = json["duration"];
-        new_song.thumbnail = json["thumbnail"];
-        new_song.type = video;
-    }
-    catch(const dpp::json::parse_error& e)
-    {
-        size_t pos = data.rfind('}');
-        dpp::json json = dpp::json::parse("{" + data.substr(15, pos-14));
-        new_song.url += json["id"];
-        new_song.title = json["title"];
-        new_song.duration = "LIVE";
-        new_song.thumbnail = json["thumbnail"];
-        new_song.type = livestream;
-    }
-    return new_song;
-}
-
 /*If first song: Download and send song to discord, then add to queue
 If second song, will download locally to resources/next.pcm, then add to queue
 Else, will just add to queue. No download is performed yet.
@@ -53,42 +27,6 @@ bool music_queue::enqueue(dpp::discord_voice_client* vc, song& song_to_add)
         t.detach();
     }
     return true;
-}
-
-int music_queue::playlist_enqueue(dpp::discord_voice_client* vc, std::string query)
-{
-    std::lock_guard<std::mutex> guard(queue_mutex);
-    int num_songs = 0;
-
-    std::string cmd = "yt-dlp -q --no-warnings --print \"{\\\"duration\\\":%(duration_string)j,\\\"id\\\":%(id)j,\\\"title\\\":%(fulltitle)j,\\\"is_live\\\":%(is_live)j,\\\"thumbnail\\\":%(thumbnail)j}\" " + query;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
-    if (!pipe)
-        return -1;
-
-    std::array<char, 512> buffer;
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr)
-    {
-        num_songs++;
-        song new_song = create_song(buffer.data());
-        queue.push_back(new_song);
-        size_t size = queue.size();
-        if (size == 1)
-        {
-            std::thread t([vc, this](){
-                this->handle_download(vc);
-            });
-            t.detach();
-        }
-        else if (size == 2)
-        {
-            std::thread t([this](){
-                this->preload();
-            });
-            t.detach();
-        }
-    }
-
-    return num_songs;
 }
 
 /*Will be called when streamed song is finished. Pops top of queue
@@ -181,6 +119,7 @@ bool music_queue::remove_from_queue(size_t ind)
 
 dpp::message music_queue::get_queue_embed(size_t page/* = 0 */)
 {
+    std::lock_guard<std::mutex> guard(queue_mutex);
 
     size_t size = queue.size();
     size_t start = (MAX_EMBED_VALUES * page) + 1;
