@@ -46,6 +46,9 @@ int main(int argc, char *argv[])
             }
         });
 
+        // handle button clicks
+        bot.on_button_click([](const dpp::button_click_t& event){ youtube::handle_button_press(event); });
+
         // handle passing marker in audio
         bot.on_voice_track_marker([](const dpp::voice_track_marker_t& marker){ youtube::handle_marker(marker); });
 

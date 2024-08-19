@@ -1,4 +1,5 @@
 #include "music_queue.h"
+#include <dpp/unicode_emoji.h>
 
 song music_queue::create_song(std::string data)
 {
@@ -178,16 +179,24 @@ bool music_queue::remove_from_queue(size_t ind)
     return false;
 }
 
-dpp::embed music_queue::get_queue_embed()
+dpp::message music_queue::get_queue_embed(size_t page/* = 0 */)
 {
 
     size_t size = queue.size();
+    size_t start = (MAX_EMBED_VALUES * page) + 1;
+    size_t end = MAX_EMBED_VALUES * (page+1);
+    // validate page
+    if (size < start)
+    {
+        start = 1;
+        end = MAX_EMBED_VALUES;
+    }
     dpp::embed q_embed = dpp::embed()
         .set_color(dpp::colors::pink_rose)
         .set_title("Queue")
         .set_footer(
             dpp::embed_footer()
-                .set_text(std::to_string(size >= 0 ? size-1 : 0) + " total songs")
+                .set_text(std::to_string(size >= 0 ? size-1 : 0) + " songs")
         )
         .set_timestamp(time(0));
     
@@ -199,7 +208,8 @@ dpp::embed music_queue::get_queue_embed()
 
         q_embed.add_field("", "");
         q_embed.add_field("Up Next:", "");
-        for (int i = 1; i < queue.size() && i <= MAX_EMBED_VALUES; i++)
+
+        for (int i = start; i < queue.size() && i <= end; i++)
         {
             q_embed.add_field(std::to_string(i) + ". ", queue.at(i).title + "\n[" + queue.at(i).duration + "]");
         }
@@ -207,7 +217,28 @@ dpp::embed music_queue::get_queue_embed()
     else
         q_embed.add_field("Empty!", "");
 
-    return q_embed;
+    dpp::message msg = dpp::message(q_embed);
+    // whether to add next page button
+    if (size > end)
+        msg.add_component(
+            dpp::component().add_component(
+                dpp::component()
+                    .set_type(dpp::cot_button)
+                    .set_emoji(dpp::unicode_emoji::right_arrow)
+                    .set_id("queue_" + std::to_string(page+1)) // store current page number in id
+            )
+        );
+    // whether to add prev page button
+    if (start > MAX_EMBED_VALUES)
+        msg.add_component(
+            dpp::component().add_component(
+                dpp::component()
+                    .set_emoji(dpp::unicode_emoji::left_arrow)
+                    .set_id("queue_" + std::to_string(page-1))
+            )
+        );
+    // return msg w/ components
+    return msg;
 }
 
 /*This function handles streaming of song to discord. Will release mutex and block if stream is live

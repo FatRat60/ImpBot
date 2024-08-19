@@ -40,10 +40,10 @@ void youtube::handle_video(const dpp::slashcommand_t& event, std::string query)
     {
 
         auto voice = event.from->get_voice(event.command.guild_id);
-        while (!voice && !voice->voiceclient)
+        while (!voice || !voice->voiceclient)
             voice = event.from->get_voice(event.command.guild_id);
 
-        music_queue& queue = *youtube::getQueue(event.command.guild_id);
+        music_queue& queue = *youtube::getQueue(event.command.guild_id, true);
         if (queue.enqueue(voice->voiceclient, new_song))
         {
             event.edit_original_response(dpp::message("Added " + new_song.url));
@@ -56,10 +56,11 @@ void youtube::handle_video(const dpp::slashcommand_t& event, std::string query)
 void youtube::handle_playlist(const dpp::slashcommand_t &event, std::string query)
 {
     auto voice = event.from->get_voice(event.command.guild_id);
-    while (!voice && !voice->voiceclient)
+    while (!voice || !voice->voiceclient)
         voice = event.from->get_voice(event.command.guild_id);
 
-    music_queue& queue = *getQueue(event.command.guild_id);
+    music_queue& queue = *getQueue(event.command.guild_id, true);
+    std::cout << "playlist_enqueue\n";
     int tracks_added = queue.playlist_enqueue(voice->voiceclient, query);
     event.edit_original_response(dpp::message(std::to_string(tracks_added) + " songs added from " + query));
 }
@@ -244,11 +245,11 @@ void youtube::queue(const dpp::slashcommand_t &event)
     auto voice_conn = event.from->get_voice(event.command.guild_id);
     if (voice_conn) // bot is connected
     {
-        if (voice_conn->voiceclient->is_playing()) // there is actually music playing
+        music_queue* queue = getQueue(event.command.guild_id);
+        if (queue && !queue->empty()) // there is actually music playing
         {
-            music_queue& queue = *getQueue(event.command.guild_id);
             // send embed
-            event.reply(dpp::message(event.command.channel_id, queue.get_queue_embed()));
+            event.reply(queue->get_queue_embed());
         }
         else
             event.reply("No songs in queue");
@@ -262,15 +263,15 @@ void youtube::remove(const dpp::slashcommand_t &event)
     auto voice_conn = event.from->get_voice(event.command.guild_id);
     if (voice_conn)
     {
-        if (voice_conn->voiceclient->is_playing())
+        music_queue* queue = getQueue(event.command.guild_id);
+        if (queue)
         {
             std::string numbers = std::get<std::string>(event.get_parameter("number"));
             if (!numbers.empty())
             {
-                music_queue& queue = *getQueue(event.command.guild_id);
                 size_t num = std::stol(numbers.substr(0, numbers.size()));
                 event.reply("Removing track number " + numbers + "...");
-                if (queue.remove_from_queue(num)) // number to remove is within the range of songs queued
+                if (queue->remove_from_queue(num)) // number to remove is within the range of songs queued
                 {
                     event.edit_original_response(dpp::message("Track " + numbers + " was removed from queue"));
                 }
@@ -285,16 +286,19 @@ void youtube::remove(const dpp::slashcommand_t &event)
         event.reply("Not in voice");
 }
 
-music_queue* youtube::getQueue(const dpp::snowflake guild_id)
+music_queue* youtube::getQueue(const dpp::snowflake guild_id, bool create/* = false */)
 {
     std::lock_guard<std::mutex> guard(queue_map_mutex);
 
     auto res = queue_map.find(guild_id);
-    music_queue* found_queue;
+    music_queue* found_queue = nullptr;
     if (res == queue_map.end())
     {
-        found_queue = new music_queue();
-        queue_map.insert({guild_id, found_queue});
+        if (create)
+        {
+            found_queue = new music_queue();
+            queue_map.insert({guild_id, found_queue});
+        }
     }
     else
         found_queue = res->second;
@@ -311,8 +315,9 @@ void youtube::handle_marker(const dpp::voice_track_marker_t &marker)
         std::thread t([marker]() {
             if (!marker.voice_client->terminating)
             {
-                music_queue& queue = *youtube::getQueue(marker.voice_client->server_id);
-                queue.go_next(marker.voice_client);
+                music_queue* queue = youtube::getQueue(marker.voice_client->server_id);
+                if (queue)
+                    queue->go_next(marker.voice_client);
             }
         });
         t.detach();
@@ -324,4 +329,38 @@ void youtube::handle_voice_leave(const dpp::slashcommand_t& event)
     std::unique_ptr<music_queue> queue(getQueue(event.command.guild_id));
     queue_map.erase(event.command.guild_id);
     queue->clear_queue();
+}
+
+void youtube::handle_button_press(const dpp::button_click_t &event)
+{
+    std::thread t([event](){
+        size_t index = event.custom_id.find('_');
+        // there is a var attached to id
+        std::string id = event.custom_id.substr(0, index);
+        // button press to update queue
+        if (id == "queue")
+        {
+            // either next or prev
+            if (index != std::string::npos)
+            {
+                size_t page;
+                try
+                {
+                    page = std::stoul(event.custom_id.substr(index+1));
+                }
+                catch(const std::exception& e)
+                {
+                    page = 0;
+                }
+                music_queue* queue = getQueue(event.command.guild_id);
+                dpp::message msg;
+                if (queue)
+                    msg = queue->get_queue_embed(page);
+                else
+                    msg = dpp::message("Why would you click this knowing there's no music playing? Dumbass...");
+                event.reply(dpp::ir_update_message, msg);
+            }
+        }
+    });
+    t.detach();
 }
