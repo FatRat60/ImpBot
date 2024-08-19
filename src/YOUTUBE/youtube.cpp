@@ -373,32 +373,32 @@ void youtube::handle_voice_leave(const dpp::slashcommand_t& event)
 void youtube::handle_button_press(const dpp::button_click_t &event)
 {
     std::thread t([event](){
-        size_t index = event.custom_id.find('_');
-        // there is a var attached to id
-        std::string id = event.custom_id.substr(0, index);
-        // button press to update queue
-        if (id == "queue")
+    size_t under = event.custom_id.find('_');
+    std::string cmd = event.custom_id.substr(0, under);
+    // button press to update queue
+    if (cmd == "queue")
+    {
+        dpp::message msg;
+        music_queue* queue = getQueue(event.command.guild_id);
+        if (queue)
         {
-            // either next or prev
-            if (index != std::string::npos)
+            // refresh
+            if (under == std::string::npos)
+                msg = queue->get_queue_embed();
+            // prev/next
+            else
             {
-                size_t page;
-                try
-                {
-                    page = std::stoul(event.custom_id.substr(index+1));
-                }
-                catch(const std::exception& e)
-                {
-                    page = 0;
-                }
-                music_queue* queue = getQueue(event.command.guild_id);
-                dpp::message msg;
-                if (queue)
-                    msg = queue->get_queue_embed(page);
+                size_t page = queue->getPage();
+                if (event.custom_id.substr(under+1) == "next")
+                    page++;
                 else
-                    msg = dpp::message("Why would you click this knowing there's no music playing? Dumbass...");
-                event.reply(dpp::ir_update_message, msg);
+                    page--;
+                msg = queue->new_page(page);
             }
+        }
+        else
+            msg = dpp::message("Why would you click this knowing there's no music playing? Dumbass...");
+            event.reply(dpp::ir_update_message, msg);
         }
     });
     t.detach();
