@@ -17,14 +17,13 @@ bool music_queue::enqueue(dpp::discord_voice_client* vc, song& song_to_add)
     {
         // stream song straight to disc
         stopLivestream = false;
-        std::thread t([vc, this](){ this->handle_download(vc); });
+        std::thread t([vc, url = song_to_add.url, this](){ this->handle_download(vc, url); });
         t.detach();
     }
-    else if (queue.size() == 2)
+    else if (queue.size() == 2 && song_to_add.type != livestream)
     {
         // preload
-        std::thread t([this](){ this->preload(); });
-        t.detach();
+        return preload(song_to_add.url);
     }
     return true;
 }
@@ -44,11 +43,11 @@ bool music_queue::go_next(dpp::discord_voice_client* vc)
         if (!queue.empty())
         {
             // send next song
-            song next = queue.front();
+            song& next = queue.front();
             if (next.type == livestream)
             {
                 stopLivestream = false;
-                std::thread t([vc, this](){ this->handle_download(vc); });
+                std::thread t([vc, url = next.url, this](){ this->handle_download(vc, url); });
                 t.detach();
             }
             else
@@ -73,7 +72,8 @@ bool music_queue::go_next(dpp::discord_voice_client* vc)
                 vc->insert_marker("end");
             }
             // preload if available
-            preload();
+            if (queue.size() > 1 && queue.at(1).type != livestream)
+                preload(queue.at(1).url);
             return true;
         }
     }
@@ -110,8 +110,8 @@ bool music_queue::remove_from_queue(size_t ind)
     {
         queue.erase(queue.begin() + ind);
 
-        if (ind == 1)
-            preload();
+        if (ind == 1 && queue.size() > 1 && queue.at(1).type != livestream)
+            preload(queue.at(1).url);
         return true;
     }
     return false;
@@ -184,10 +184,9 @@ dpp::message music_queue::get_queue_embed()
 
 /*This function handles streaming of song to discord. Will release mutex and block if stream is live
 to allow queue to still add songs. Else holds mutex until download is finished*/
-bool music_queue::handle_download(dpp::discord_voice_client* vc)
+bool music_queue::handle_download(dpp::discord_voice_client* vc, std::string url)
 {
-    song song = queue.front();
-    std::string cmd = "yt-dlp -f 140/139/234/233 -q --no-warnings -o - --no-playlist " + song.url + " | ffmpeg -i pipe:.m4a -f s16le -ar 48000 -ac 2 -loglevel quiet pipe:.pcm";
+    std::string cmd = "yt-dlp -f 140/139/234/233 -q --no-warnings -o - --no-playlist " + url + " | ffmpeg -i pipe:.m4a -f s16le -ar 48000 -ac 2 -loglevel quiet pipe:.pcm";
     std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
     if (!pipe)
         return false;
@@ -209,19 +208,9 @@ bool music_queue::handle_download(dpp::discord_voice_client* vc)
     return true;
 }
 
-bool music_queue::preload()
+bool music_queue::preload(std::string& url)
 {
-    if (queue.size() > 1)
-    {
-        song song = queue.at(1);
-        if (song.type != livestream)
-        {
-            std::string cmd = "yt-dlp -f 140/139/234/233 -q --no-warnings -o - --no-playlist " + song.url + 
-            " | ffmpeg -i pipe:.m4a -f s16le -ar 48000 -ac 2 -loglevel quiet -y " + std::string(NEXT_SONG);
-            return system(cmd.c_str()) == 0;
-        }
-        return true;
-    }
-    else
-        return false;
+    std::string cmd = "yt-dlp -f 140/139/234/233 -q --no-warnings -o - --no-playlist " + url + 
+    " | ffmpeg -i pipe:.m4a -f s16le -ar 48000 -ac 2 -loglevel quiet -y " + std::string(NEXT_SONG);
+    return system(cmd.c_str()) == 0;
 }

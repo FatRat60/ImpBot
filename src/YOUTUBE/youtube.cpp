@@ -13,21 +13,20 @@ std::mutex youtube::queue_map_mutex;
 
 song youtube::get_song_info(std::string& query)
 {
-    std::string cmd = "yt-dlp -q --no-warnings --print \"{\\\"duration\\\":%(duration_string)j,\\\"id\\\":%(id)j,\\\"title\\\":%(fulltitle)j,\\\"is_live\\\":%(is_live)j,\\\"thumbnail\\\":%(thumbnail)j}\" " + query;
+    std::string cmd = "yt-dlp -q --no-warnings --output-na-placeholder \"\\\"\\\"\" --print \"{\\\"duration\\\":%(duration_string)j,\\\"id\\\":%(id)j,\\\"title\\\":%(title)j, \\\"thumbnail\\\":%(thumbnail)j}\\n\" " + query;
     song found_song;
     std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
     if (pipe)
     {
-        found_song.url = YOUTUBE_VIDEO_URL;
-        std::array<char, 1024> buffer;
-        std::string data;
-        while (fread(buffer.data(), sizeof(char), 1024, pipe.get()) > 0)
-            data += buffer.data();
-
-        // clean up data???
-        size_t pos = data.rfind('}');
-
-        found_song = create_song("{" + data.substr(1, pos));
+        char buffer[1024];
+        if (fgets(buffer, 1024, pipe.get()) != nullptr)
+        {
+            std::string data = buffer;
+            // remove newline
+            if (data.rfind('\n') != std::string::npos)
+                data.pop_back();
+            found_song = create_song(data);
+        }
     }
     return found_song;
 }
@@ -35,26 +34,31 @@ song youtube::get_song_info(std::string& query)
 song youtube::create_song(std::string data)
 {
     song new_song;
-
+    
     try
     {
         dpp::json json = dpp::json::parse(data);
-        new_song.url += json["id"];
+        new_song.url = YOUTUBE_VIDEO_URL;
         new_song.title = json["title"];
-        new_song.duration = json["duration"];
+        // livestream
+        if (json["duration"] == "")
+        {
+            new_song.type = livestream;
+            new_song.duration = "LIVE";
+        }
+        // normal video
+        else
+        {
+            new_song.type = video;
+            new_song.duration = json["duration"];
+        }
         new_song.thumbnail = json["thumbnail"];
-        new_song.type = video;
+        new_song.url += json["id"];
     }
     catch(const dpp::json::parse_error& e)
     {
-        //should def make removing duration: much cleaner
-        size_t pos = data.rfind('}');
-        dpp::json json = dpp::json::parse("{" + data.substr(15, pos-14));
-        new_song.url += json["id"];
-        new_song.title = json["title"];
-        new_song.duration = "LIVE";
-        new_song.thumbnail = json["thumbnail"];
-        new_song.type = livestream;
+        // if errors for whatever reason jus dont queue song. But it shouldnt now
+        new_song.title = "";
     }
     return new_song;
 }
@@ -63,9 +67,8 @@ void youtube::handle_video(const dpp::slashcommand_t& event, std::string query)
 {
     song new_song = get_song_info(query);
 
-    if (!new_song.url.empty())
+    if (new_song.title != "")
     {
-
         auto voice = event.from->get_voice(event.command.guild_id);
         while (!voice || !voice->voiceclient)
             voice = event.from->get_voice(event.command.guild_id);
@@ -86,7 +89,7 @@ void youtube::handle_playlist(const dpp::slashcommand_t &event, std::string quer
     while (!voice || !voice->voiceclient)
         voice = event.from->get_voice(event.command.guild_id);
 
-    std::string cmd = "yt-dlp -q --no-warnings --print \"{\\\"duration\\\":%(duration_string)j,\\\"id\\\":%(id)j,\\\"title\\\":%(fulltitle)j,\\\"is_live\\\":%(is_live)j,\\\"thumbnail\\\":%(thumbnail)j}\" " + query;
+    std::string cmd = "yt-dlp -q --no-warnings --output-na-placeholder \"\\\"\\\"\" --flat-playlist --print \"{\\\"duration\\\":%(duration_string)j,\\\"id\\\":%(id)j,\\\"title\\\":%(title)j, \\\"thumbnail\\\":%(thumbnail)j}\" " + query;
     std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
     size_t num_songs = 0;
     if (pipe)
@@ -96,8 +99,11 @@ void youtube::handle_playlist(const dpp::slashcommand_t &event, std::string quer
         while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr)
         {
             song new_song = create_song(buffer.data());
-            num_songs += !new_song.url.empty();
-            queue.enqueue(voice->voiceclient, new_song);
+            if (new_song.title != "")
+            {
+                num_songs++;
+                queue.enqueue(voice->voiceclient, new_song);
+            }
         }
     }
 
