@@ -35,6 +35,7 @@ class music_queue
         bool empty() { return queue.empty(); }
         size_t getPage() { return page; }
         dpp::message new_page(size_t num) {page = num; return get_queue_embed(); }
+        void shuffle();
     private:
         std::mutex queue_mutex;
         std::deque<song> queue;

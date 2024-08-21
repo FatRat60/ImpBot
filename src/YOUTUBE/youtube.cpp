@@ -559,33 +559,63 @@ void youtube::handle_voice_leave(const dpp::slashcommand_t& event)
 void youtube::handle_button_press(const dpp::button_click_t &event)
 {
     std::thread t([event](){
-    size_t under = event.custom_id.find('_');
-    std::string cmd = event.custom_id.substr(0, under);
-    // button press to update queue
-    if (cmd == "queue")
-    {
-        dpp::message msg;
-        music_queue* queue = getQueue(event.command.guild_id);
-        if (queue)
+        size_t under = event.custom_id.find('_');
+        std::string cmd = event.custom_id.substr(0, under);
+        // button press to update queue
+        if (cmd == "queue")
         {
-            // refresh
-            if (under == std::string::npos)
-                msg = queue->get_queue_embed();
-            // prev/next
-            else
+            dpp::message msg;
+            music_queue* queue = getQueue(event.command.guild_id);
+            if (queue)
             {
-                size_t page = queue->getPage();
-                if (event.custom_id.substr(under+1) == "next")
-                    page++;
+                // refresh
+                if (under == std::string::npos)
+                    msg = queue->get_queue_embed();
+                // prev/next
                 else
-                    page--;
-                msg = queue->new_page(page);
+                {
+                    size_t page = queue->getPage();
+                    if (event.custom_id.substr(under+1) == "next")
+                        page++;
+                    else
+                        page--;
+                    msg = queue->new_page(page);
+                }
             }
+            else
+                msg = dpp::message("Why would you click this knowing there's no music playing? Dumbass...");
+
+            event.reply(dpp::ir_update_message, msg);     
         }
-        else
-            msg = dpp::message("Why would you click this knowing there's no music playing? Dumbass...");
-            event.reply(dpp::ir_update_message, msg);
+        else if (cmd == "shuffle")
+        {
+            music_queue* queue = youtube::getQueue(event.command.guild_id);
+            if (queue)
+            {
+                queue->shuffle();
+                event.reply(dpp::ir_update_message, queue->get_queue_embed());
+            }   
+            else
+                event.reply(dpp::ir_update_message, dpp::message("No queue"));
         }
     });
     t.detach();
+}
+
+void youtube::shuffle(const dpp::slashcommand_t &event)
+{
+    auto voice = event.from->get_voice(event.command.guild_id);
+    if (voice)
+    {
+        music_queue* queue = getQueue(event.command.guild_id);
+        if (queue)
+        {
+            queue->shuffle();
+            event.reply("Shuffled!");
+        }
+        else
+            event.reply("Nothing to shuffle dumbass");
+    }   
+    else
+        event.reply("Not in voice");
 }

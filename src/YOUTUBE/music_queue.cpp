@@ -1,5 +1,8 @@
 #include "music_queue.h"
 #include <dpp/unicode_emoji.h>
+#include <algorithm>
+#include <random>
+#include <chrono>
 
 /*If first song: Download and send song to discord, then add to queue
 If second song, will download locally to resources/next.pcm, then add to queue
@@ -74,7 +77,10 @@ bool music_queue::go_next(dpp::discord_voice_client* vc)
             }
             // preload if available
             if (queue.size() > 1 && queue.at(1).type != livestream)
-                preload(queue.at(1).url);
+            {
+                std::thread t([url = queue.at(1).url, this](){ this->preload(url); });
+                t.detach();
+            }
             return true;
         }
     }
@@ -180,7 +186,26 @@ dpp::message music_queue::get_queue_embed()
                 .set_emoji(dpp::unicode_emoji::arrows_counterclockwise)
                 .set_id("queue")
         )
+        .add_component(
+            dpp::component()
+                .set_emoji(dpp::unicode_emoji::arrows_clockwise)
+                .set_id("shuffle")
+        )
     );
+}
+
+void music_queue::shuffle()
+{
+    std::lock_guard<std::mutex> guard(queue_mutex);
+
+    auto rng_seed = std::chrono::system_clock::now().time_since_epoch().count();
+    std::shuffle(queue.begin()+1, queue.end(), std::default_random_engine(rng_seed));
+
+    if (queue.size() > 1)
+    {
+        std::thread t([url = queue.at(1).url, this](){ this->preload(url); });
+        t.detach();
+    }
 }
 
 /*This function handles streaming of song to discord. Will release mutex and block if stream is live

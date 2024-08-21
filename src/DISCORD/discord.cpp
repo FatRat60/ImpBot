@@ -43,11 +43,13 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
             dpp::command_option(dpp::co_boolean, "restart", "If true, will restart the server after shutdown")
         );
         dpp::slashcommand ipcmd("ip", "I'll slide into your DMs with the server ip <3", bot.me.id);
+        dpp::slashcommand shufflecmd("shuffle", "Shuffles the queue", bot.me.id);
 
         const std::vector<dpp::slashcommand> commands = { 
             pingcmd, joincmd, leavecmd, playcmd,
             pausecmd, stopcmd, skipcmd, queuecmd,
-            removecmd, startcmd, terminatecmd, ipcmd
+            removecmd, startcmd, terminatecmd, ipcmd,
+            shufflecmd
         };
         
     
@@ -70,6 +72,7 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
         command_map.insert({"start", START});
         command_map.insert({"terminate", TERMINATE});
         command_map.insert({"ip", IP});
+        command_map.insert({"shuffle", SHUFFLE});
     }
 }
 
@@ -126,6 +129,9 @@ void discord::handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event)
 
         case IP:
             server::ip(bot, event);
+            break;
+        case SHUFFLE:
+            youtube::shuffle(event);
             break;
         }
     }

@@ -24,6 +24,7 @@ class youtube
         static void handle_marker(const dpp::voice_track_marker_t& marker);
         static void handle_voice_leave(const dpp::slashcommand_t& event);
         static void handle_button_press(const dpp::button_click_t& event);
+        static void shuffle(const dpp::slashcommand_t& event);
     private:
         static std::string YOUTUBE_API_KEY;
         static std::unordered_map<dpp::snowflake, music_queue*> queue_map;

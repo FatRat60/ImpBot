@@ -20,7 +20,8 @@ enum command_name
     REMOVE,
     START,
     TERMINATE,
-    IP
+    IP,
+    SHUFFLE
 };
 
 class discord
