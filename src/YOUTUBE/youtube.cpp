@@ -433,20 +433,39 @@ void youtube::remove(const dpp::slashcommand_t &event)
         if (queue)
         {
             std::string numbers = std::get<std::string>(event.get_parameter("number"));
-            if (!numbers.empty())
+            // parse start and end
+            std::string first, second;
+            size_t colon = numbers.find(':');
+            if (colon != std::string::npos)
             {
-                size_t num = std::stol(numbers.substr(0, numbers.size()));
-                event.reply("Removing track number " + numbers + "...");
-                if (queue->remove_from_queue(num)) // number to remove is within the range of songs queued
+                first = numbers.substr(0, colon);
+                second = numbers.substr(colon);
+                second.replace(0, 1, "");
+            }
+            // sanitize them
+            if (!first.empty() && isdigit(first[0]))
+            {
+                size_t start = std::stoul(first);
+                size_t end = std::string::npos;
+                if (!second.empty())
                 {
-                    event.edit_original_response(dpp::message("Track " + numbers + " was removed from queue"));
+                    if (isdigit(second[0]))
+                        end = std::stoul(second);
+                    else
+                        end = start+1;
+                }
+                if (queue->remove_from_queue(start, end))
+                {
+                    event.reply("removed track(s) from queue");
                 }
                 else
-                    event.edit_original_response(dpp::message("Could not remove track " + numbers));
+                    event.reply("could not remove track(s)");
             }
+            else
+                event.reply("Invalid or non-existant first parameter");
         }
         else
-            event.reply("No songs ");
+            event.reply("No songs");
     }
     else
         event.reply("Not in voice");

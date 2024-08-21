@@ -30,7 +30,7 @@ class music_queue
         bool go_next(dpp::discord_voice_client* vc);
         void skip(dpp::discord_voice_client* vc);
         void clear_queue();
-        bool remove_from_queue(size_t ind);
+        bool remove_from_queue(size_t start, size_t end);
         dpp::message get_queue_embed();
         bool empty() { return queue.empty(); }
         size_t getPage() { return page; }

@@ -110,15 +110,24 @@ void music_queue::clear_queue()
     queue.clear();
 }
 
-bool music_queue::remove_from_queue(size_t ind)
+bool music_queue::remove_from_queue(size_t start, size_t end)
 {
     std::lock_guard<std::mutex> guard(queue_mutex);
-    if (ind < queue.size())
-    {
-        queue.erase(queue.begin() + ind);
 
-        if (ind == 1 && queue.size() > 1 && queue.at(1).type != livestream)
-            preload(queue.at(1).url);
+    if (start < queue.size())
+    {
+        // sanitize end
+
+        if (end == std::string::npos || end == queue.size())
+            queue.erase(queue.begin() + start, queue.end());
+        else
+            queue.erase(queue.begin() + start, queue.begin() + end);
+
+        if (start == 1 && queue.size() > 1 && queue.at(1).type != livestream)
+        {
+            std::thread t([url = queue.at(1).url,this](){ this->preload(url); });
+            t.detach();
+        }
         return true;
     }
     return false;
