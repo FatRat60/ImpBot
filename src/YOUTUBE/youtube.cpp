@@ -63,33 +63,156 @@ song youtube::create_song(std::string data)
     return new_song;
 }
 
-void youtube::handle_video(const dpp::slashcommand_t& event, std::string query)
+void youtube::handle_video_youtube(const dpp::slashcommand_t& event, std::string videoId, bool doReply)
 {
-    song new_song = get_song_info(query);
+    if (!YOUTUBE_API_KEY.empty())
+        event.from->creator->request(
+            std::string(YOUTUBE_ENDPOINT) + "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") + "&id=" + videoId + "&key=" + YOUTUBE_API_KEY,
+            dpp::m_get, [event, videoId, doReply](const dpp::http_request_completion_t& reply){
+                if (reply.status == 200)
+                {
+                    // parse body
+                    dpp::json json = dpp::json::parse(reply.body);
+                    music_queue& queue = *youtube::getQueue(event.command.guild_id, true);
 
-    if (new_song.title != "")
-    {
-        auto voice = event.from->get_voice(event.command.guild_id);
-        while (!voice || !voice->voiceclient)
-            voice = event.from->get_voice(event.command.guild_id);
+                    // get voice
+                    auto voice = event.from->get_voice(event.command.guild_id);
+                    while (!voice || !voice->voiceclient)
+                        voice = event.from->get_voice(event.command.guild_id);
 
-        music_queue& queue = *youtube::getQueue(event.command.guild_id, true);
-        if (queue.enqueue(voice->voiceclient, new_song))
-        {
-            event.edit_original_response(dpp::message("Added " + new_song.url));
-            return;
-        }
-    }
-    event.edit_original_response(dpp::message("There was an issue queueing that song"));
+                    // create song struct and enqueue it
+                    song new_song;
+                    new_song.url = YOUTUBE_VIDEO_URL;
+                    new_song.title = json["items"][0]["snippet"]["title"];
+                    new_song.thumbnail = json["items"][0]["snippet"]["thumbnails"]["default"]["url"];
+                    new_song.duration = convertDuration(json["items"][0]["contentDetails"]["duration"]);
+                    //new_song.duration = json["items"][0]["contentDetails"]["duration"];
+                    new_song.type = (song_type)(json["items"][0]["snippet"]["liveBroadcastContent"] != "none");
+                    new_song.url += videoId;
+
+                    bool res = queue.enqueue(voice->voiceclient, new_song);
+                    if (doReply)
+                    {
+                        if (res)
+                            event.edit_original_response(dpp::message("Added " + new_song.url));
+                        else
+                            event.edit_original_response(dpp::message("There was an issue queueing that song"));
+                    }
+                }
+                // rate-limit
+                else if (reply.status == 429)
+                {
+                    YOUTUBE_API_KEY = "";
+                    // handle_video_dlp
+                    youtube::handle_video_dlp(event, videoId, doReply);
+                }
+                else if (doReply)
+                    event.edit_original_response(dpp::message("There was an issue queuing the video with id: " + videoId));
+            }
+        );
+    else
+        handle_video_dlp(event, videoId, doReply);
 }
 
-void youtube::handle_playlist(const dpp::slashcommand_t &event, std::string query)
+void youtube::handle_playlist_youtube(const dpp::slashcommand_t &event, std::string playlistId)
+{
+    if (!YOUTUBE_API_KEY.empty())
+        event.from->creator->request(
+            std::string(YOUTUBE_ENDPOINT) + "/playlistItems?part=snippet&playlistId=" + playlistId + "&maxResults=50&key=" + YOUTUBE_API_KEY,
+            dpp::m_get, [event, playlistId](const dpp::http_request_completion_t& reply){
+                if (reply.status == 200)
+                {
+                    // parse body
+                    dpp::json json = dpp::json::parse(reply.body);
+                    youtube::handle_playlist_item(event, json);
+                }
+                else if (reply.status == 429)
+                {
+                    YOUTUBE_API_KEY = "";
+                    youtube::handle_playlist_dlp(event, playlistId);
+                }
+                else
+                    event.edit_original_response(dpp::message("There was an issue queueing playlist with id: " + playlistId));
+            }
+        );
+    else
+        handle_playlist_dlp(event, playlistId);
+}
+
+void youtube::handle_playlist_item(const dpp::slashcommand_t& event, dpp::json& playlistItem, size_t songs)
+{
+    for (dpp::json item : playlistItem["items"])
+    {
+        songs++;
+        handle_video_youtube(event, item["snippet"]["resourceId"]["videoId"], false);
+    }
+
+    std::string playlistId = playlistItem["items"][0]["snippet"]["playlistId"];
+    if (playlistItem.contains("nextPageToken") && !YOUTUBE_API_KEY.empty())
+    {
+        std::string nextPageToken = playlistItem["nextPageToken"];
+        event.from->creator->request(
+            std::string(YOUTUBE_ENDPOINT) + "/playlistItems?part=snippet&playlistId=" + playlistId + "&maxResults=50&nextPageToken=" + nextPageToken + "key=" + YOUTUBE_API_KEY,
+            dpp::m_get, [event, songs, playlistId](const dpp::http_request_completion_t& reply){
+                if (reply.status == 200)
+                {
+                    dpp::json json = dpp::json::parse(reply.body);
+                    youtube::handle_playlist_item(event, json, songs);
+                }
+                else
+                {
+                    YOUTUBE_API_KEY = "";
+                    event.edit_original_response(dpp::message("Added " + std::to_string(songs) + " from " + std::string(YOUTUBE_LIST_URL) + playlistId));
+                }
+
+            }
+        );
+    }
+    else
+        event.edit_original_response(dpp::message("Added " + std::to_string(songs) + " from " + std::string(YOUTUBE_LIST_URL) + playlistId));
+}
+
+void youtube::handle_video_dlp(const dpp::slashcommand_t &event, std::string videoId, bool doReply)
+{
+    std::string cmd = "yt-dlp -q --no-warnings --output-na-placeholder \"\\\"\\\"\" --print \"{\\\"duration\\\":%(duration_string)j,\\\"id\\\":%(id)j,\\\"title\\\":%(title)j, \\\"thumbnail\\\":%(thumbnail)j}\" " + std::string(YOUTUBE_VIDEO_URL) + videoId;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+    char buffer[256];
+    auto voice = event.from->get_voice(event.command.guild_id);
+    while (!voice || !voice->voiceclient)
+        voice = event.from->get_voice(event.command.guild_id);
+
+    if (pipe)
+    {
+        fgets(buffer, 256, pipe.get());
+        std::string data = buffer;
+        data.pop_back();
+        song new_song = create_song(data);
+        if (!new_song.title.empty())
+        {
+            music_queue& queue = *youtube::getQueue(event.command.guild_id, true);
+            bool res = queue.enqueue(voice->voiceclient, new_song);
+            if (doReply)
+            {
+                if (res)
+                        event.edit_original_response(dpp::message("Added " + new_song.url));
+                else
+                        event.edit_original_response(dpp::message("There was an issue queueing that song"));
+            }
+        }
+        else if (doReply)
+            event.edit_original_response(dpp::message("Songs is hidden or unavailable"));
+    }
+    else if (doReply)
+        event.edit_original_response(dpp::message("Broken Pipe"));
+}
+
+void youtube::handle_playlist_dlp(const dpp::slashcommand_t &event, std::string playlistId)
 {
     auto voice = event.from->get_voice(event.command.guild_id);
     while (!voice || !voice->voiceclient)
         voice = event.from->get_voice(event.command.guild_id);
 
-    std::string cmd = "yt-dlp -q --no-warnings --output-na-placeholder \"\\\"\\\"\" --flat-playlist --print \"{\\\"duration\\\":%(duration_string)j,\\\"id\\\":%(id)j,\\\"title\\\":%(title)j, \\\"thumbnail\\\":%(thumbnail)j}\" " + query;
+    std::string cmd = "yt-dlp -q --no-warnings --output-na-placeholder \"\\\"\\\"\" --flat-playlist --print \"{\\\"duration\\\":%(duration_string)j,\\\"id\\\":%(id)j,\\\"title\\\":%(title)j, \\\"thumbnail\\\":%(thumbnail)j}\" " + std::string(YOUTUBE_LIST_URL) + playlistId;
     std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
     size_t num_songs = 0;
     if (pipe)
@@ -107,7 +230,7 @@ void youtube::handle_playlist(const dpp::slashcommand_t &event, std::string quer
         }
     }
 
-    event.edit_original_response(dpp::message(std::to_string(num_songs) + " songs added from " + query));
+    event.edit_original_response(dpp::message(std::to_string(num_songs) + " songs added from " + playlistId));
 }
 
 void youtube::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
@@ -142,75 +265,73 @@ void youtube::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
     if (doMusic)
     {
         std::string search_term = std::get<std::string>(event.get_parameter("link"));
-        if (!YOUTUBE_API_KEY.empty()) // Youtube API key exists
-        {
-            event.reply("Searching for " + search_term,
-            [event, search_term](const dpp::confirmation_callback_t& callback){
-                std::string link = search_term;
-                // user sent a link
-                if (search_term.substr(0, 8) == "https://")
+        event.reply("Searching for " + search_term,
+        [event, search_term](const dpp::confirmation_callback_t& callback){
+            std::string link = search_term;
+            // user sent a link
+            if (search_term.substr(0, 8) == "https://")
+            {
+                size_t slash = search_term.find('/', 8);
+                std::string platform = link.substr(8, slash - 8);
+                // youtube
+                if (platform == "www.youtube.com" || platform == "youtube.com" || platform == "youtu.be" || platform == "music.youtube.com")
                 {
-                    size_t slash = search_term.find('/', 8);
-                    std::string platform = link.substr(8, slash - 8);
-                    // youtube
-                    if (platform == "www.youtube.com" || platform == "youtube.com" || platform == "youtu.be")
+                    size_t mark = search_term.find('?', slash);
+                    std::string type = search_term.substr(slash+1, (mark-slash)-1);
+                    size_t equals = search_term.find('=', mark);
+                    size_t aaron = search_term.find('&', equals);
+                    std::string id = search_term.substr(equals+1, (aaron-equals) - 1);
+                    
+                    // /playlist?list=<id>
+                    if (type == "playlist")
                     {
-                        size_t mark = search_term.find('?', slash);
-                        size_t aaron = search_term.find("&", mark);
-                        link = search_term.substr(0, aaron);
-                        std::string type = link.substr(slash+1, mark - (slash+1)); 
-                        
-                        if (type == "playlist")
-                        {
-                            handle_playlist(event, link);
-                        }
-                        else // video or livestream
-                        {
-                            handle_video(event, link);
-                        }
+                        handle_playlist_youtube(event, id);
                     }
-                    // youtube music
-                    else if (platform == "music.youtube.com")
+                    // ?v=<id>
+                    else if (type == "watch")
                     {
-                        size_t mark = search_term.find('?', slash);
-                        std::string type = search_term.substr(slash+1, mark-(slash+1));
-                        size_t equals = search_term.find('=', mark);
-                        size_t aaron = search_term.find('&', mark);
-                        std::string id = search_term.substr(equals+1, aaron - (equals+1));
-                        if (type == "playlist")
-                        {
-                            handle_playlist(event, std::string(YOUTUBE_LIST_URL) + id);
-                        }
-                        else
-                        {
-                            handle_video(event, std::string(YOUTUBE_VIDEO_URL) + id);
-                        }
+                        handle_video_youtube(event, id); 
                     }
-                    // spotify
-                    else if (platform == "open.spotify.com")
-                    {
-                        event.edit_original_response(dpp::message("Spotify support coming soon"));
-                    }
-                    // soundcloud
-                    else if (platform == "soundcloud.com")
-                    {
-                        event.edit_original_response(dpp::message("Soundcloud support coming soon"));
-                    }
+                    // either /live/<id>? or /<id>?
                     else
-                        event.edit_original_response(dpp::message("The platform, " + platform + ", is not currently supported"));
+                    {
+                        id = type;
+                        size_t slash2 = type.find('/');
+                        if (slash2 == std::string::npos)
+                            id = type.substr(slash2+1);
+                        handle_video_youtube(event, id);
+                    }
                 }
-                // user sent a query. Search youtube
-                else
+                // spotify
+                else if (platform == "open.spotify.com")
                 {
-                    handle_video(event, "\"ytsearch:" + search_term + ":1\"");
+                    event.edit_original_response(dpp::message("Spotify support coming soon"));
                 }
-            });
-        }
-        else // API key not found.
-        {
-            event.reply("Youtube search not available. Tell kyle's dumbass to regenerate the API key");
-            return;
-        }
+                // soundcloud
+                else if (platform == "soundcloud.com")
+                {
+                    event.edit_original_response(dpp::message("Soundcloud support coming soon"));
+                }
+                else
+                    event.edit_original_response(dpp::message("The platform, " + platform + ", is not currently supported"));
+            }
+            // user sent a query. Search youtube
+            else
+            {
+                std::string cmd = "yt-dlp -q --no-warnings --flat-playlist --no-playlist --print \"id\" \"ytsearch1:" + search_term + "\"";
+                char buffer[50];
+                std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+                if (pipe)
+                { 
+                    fgets(buffer, 50, pipe.get());
+                    std::string id = buffer;
+                    id.pop_back();
+                    handle_video_youtube(event, id);
+                }
+                else
+                    event.edit_original_response(dpp::message("Broken Pipe"));
+            }
+        });
     }
 }
 
@@ -349,6 +470,65 @@ music_queue* youtube::getQueue(const dpp::snowflake guild_id, bool create/* = fa
         found_queue = res->second;
 
     return found_queue;
+}
+
+std::string youtube::convertDuration(std::string old_duration)
+{
+    std::string new_duration;
+    if (old_duration == "POD")
+        new_duration = "LIVE";
+    else if (!old_duration.empty() && old_duration[0] == 'P')
+    {   // convert from ISO-8601
+        std::string old_duration_front = old_duration.substr(0, old_duration.find('T'));
+        std::string letters = "PYMWD";
+        std::array<size_t, 4> conversions = {8760, 730, 168, 24};
+        size_t start = 0;
+        size_t curr = 1;
+        size_t hours = 0;
+        while (curr < 4)
+        {
+            size_t pos = old_duration_front.find(letters[curr], start);
+            if (pos != std::string::npos)
+            {
+                std::string num = old_duration_front.substr(start, (pos - start) - 1);
+                hours += (std::stoul(num) * conversions[curr]);
+                start = pos; 
+            }
+            curr++;
+        }
+        // parse hours
+        start = 0;
+        old_duration = old_duration.substr(old_duration.find('T'));
+        curr = old_duration.find('H', start);
+        if (curr != std::string::npos)
+        {
+            std::cout << "stoul: " + old_duration.substr(start+1, (curr-start) - 1) << "\n";
+            hours += std::stoul(old_duration.substr(start+1, (curr-start) - 1));
+            start = curr;
+        }
+        if (hours > 0)
+            new_duration += std::to_string(hours) + ":";
+        
+        // parse minutes
+        curr = old_duration.find('M', start);
+        if (curr != std::string::npos)
+        {
+            new_duration += old_duration.substr(start+1, (curr-start) - 1) + ":";
+            start = curr;
+        }
+        else
+            new_duration += "0:";
+
+        // parse seconds
+        curr = old_duration.find('S', start);
+        std::string sec = "00";
+        if (curr != std::string::npos)
+            sec = old_duration.substr(start+1, (curr-start)-1);
+        if (sec.length() < 2)
+            sec = "0" + sec;
+        new_duration += sec;
+    }
+    return new_duration;
 }
 
 void youtube::handle_marker(const dpp::voice_track_marker_t &marker)

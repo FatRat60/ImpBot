@@ -23,7 +23,8 @@ bool music_queue::enqueue(dpp::discord_voice_client* vc, song& song_to_add)
     else if (queue.size() == 2 && song_to_add.type != livestream)
     {
         // preload
-        return preload(song_to_add.url);
+        std::thread t([vc, url = song_to_add.url, this](){ this->preload(url); });
+        t.detach();
     }
     return true;
 }
@@ -208,7 +209,7 @@ bool music_queue::handle_download(dpp::discord_voice_client* vc, std::string url
     return true;
 }
 
-bool music_queue::preload(std::string& url)
+bool music_queue::preload(std::string url)
 {
     std::string cmd = "yt-dlp -f 140/139/234/233 -q --no-warnings -o - --no-playlist " + url + 
     " | ffmpeg -i pipe:.m4a -f s16le -ar 48000 -ac 2 -loglevel quiet -y " + std::string(NEXT_SONG);

@@ -41,7 +41,7 @@ class music_queue
         bool stopLivestream;
         size_t page;
         bool handle_download(dpp::discord_voice_client* vc, std::string url);
-        bool preload(std::string& url);
+        bool preload(std::string url);
 };
 
 #endif
