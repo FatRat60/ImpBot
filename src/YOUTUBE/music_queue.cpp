@@ -155,11 +155,17 @@ dpp::message music_queue::get_queue_embed()
 
         q_embed.add_field("", "");
         q_embed.add_field("Up Next:", "");
-
-        for (int i = start; i < queue.size() && i <= end; i++)
+        int i,j;
+        // write inline fields
+        for (i = start, j = start + (MAX_EMBED_VALUES / 2); i < queue.size() && j < queue.size() && j <= end; i++, j++)
         {
-            q_embed.add_field(std::to_string(i) + ". ", queue.at(i).title + "\n[" + queue.at(i).duration + "]");
+            q_embed.add_field(std::to_string(i) + ". ", queue.at(i).title + "\n[" + queue.at(i).duration + "]", true);
+            q_embed.add_field(std::to_string(j) + ". ", queue.at(j).title + "\n[" + queue.at(j).duration + "]", true);
+            q_embed.add_field("", "");
         }
+        // write any remaining
+        for (; i < queue.size() && i <= end - (MAX_EMBED_VALUES / 2); i++)
+            q_embed.add_field(std::to_string(i) + ". ", queue.at(i).title + "\n[" + queue.at(i).duration + "]");
     }
     else
         q_embed.add_field("Empty!", "");
