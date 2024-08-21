@@ -21,12 +21,17 @@ class youtube
         static void queue(const dpp::slashcommand_t& event);
         static void remove(const dpp::slashcommand_t& event);
         static void setAPIkey(std::string API_KEY) { YOUTUBE_API_KEY = API_KEY;}
+        static void setSpotifyId(std::string CLIENT_ID, std::string CLIENT_SECRET){ SPOTIFY_CLIENT_ID = CLIENT_ID; SPOTIFY_CLIENT_SECRET = CLIENT_SECRET;}
         static void handle_marker(const dpp::voice_track_marker_t& marker);
         static void handle_voice_leave(const dpp::slashcommand_t& event);
         static void handle_button_press(const dpp::button_click_t& event);
         static void shuffle(const dpp::slashcommand_t& event);
     private:
         static std::string YOUTUBE_API_KEY;
+        static std::string SPOTIFY_CLIENT_ID;
+        static std::string SPOTIFY_CLIENT_SECRET;    
+        static std::string SPOTIFY_ACCESS_TOKEN;
+        static std::string SPOTIFY_REFRESH_TOKEN;
         static std::unordered_map<dpp::snowflake, music_queue*> queue_map;
         static std::unordered_map<dpp::snowflake, dpp::timer> timer_map;
         static std::mutex queue_map_mutex;

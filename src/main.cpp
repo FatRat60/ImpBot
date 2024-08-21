@@ -25,6 +25,15 @@ int main(int argc, char *argv[])
         var2 = get_env_var("SERVER_BASE_DIR");
         if (var2)
             server::setDir(std::string(var2));
+
+        // init spotify
+        var2 = get_env_var("SPOTIFY_CLIENT_ID");
+        if (var2)
+        {
+            char* var3 = get_env_var("SPOTIFY_CLIENT_SECRET");
+            if (var3)
+                youtube::setSpotifyId(std::string(var2), std::string(var3));
+        }
             
         std::string TOKEN(var);
         dpp::cluster bot(TOKEN, dpp::i_default_intents | dpp::i_message_content);

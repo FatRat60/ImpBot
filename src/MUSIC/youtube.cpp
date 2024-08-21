@@ -8,6 +8,9 @@
 // "yt-dlp -f 140 -q --no-warnings -o - --no-playlist " + youtube_song.url + " | ffmpeg -i pipe:.m4a -c:a libopus -ar 48000 -ac 2 -loglevel quiet pipe:.opus";
 
 std::string youtube::YOUTUBE_API_KEY;
+std::string youtube::SPOTIFY_CLIENT_ID;
+std::string youtube::SPOTIFY_CLIENT_SECRET;
+std::string youtube::SPOTIFY_ACCESS_TOKEN;
 std::unordered_map<dpp::snowflake, music_queue*> youtube::queue_map;
 std::mutex youtube::queue_map_mutex;
 
