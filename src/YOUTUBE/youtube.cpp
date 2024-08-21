@@ -152,19 +152,18 @@ void youtube::handle_playlist_item(const dpp::slashcommand_t& event, dpp::json& 
     {
         std::string nextPageToken = playlistItem["nextPageToken"];
         event.from->creator->request(
-            std::string(YOUTUBE_ENDPOINT) + "/playlistItems?part=snippet&playlistId=" + playlistId + "&maxResults=50&nextPageToken=" + nextPageToken + "key=" + YOUTUBE_API_KEY,
+            std::string(YOUTUBE_ENDPOINT) + "/playlistItems?part=snippet&playlistId=" + playlistId + "&maxResults=50&pageToken=" + nextPageToken + "&key=" + YOUTUBE_API_KEY,
             dpp::m_get, [event, songs, playlistId](const dpp::http_request_completion_t& reply){
                 if (reply.status == 200)
                 {
                     dpp::json json = dpp::json::parse(reply.body);
                     youtube::handle_playlist_item(event, json, songs);
                 }
-                else
+                else if (reply.status == 429)
                 {
                     YOUTUBE_API_KEY = "";
                     event.edit_original_response(dpp::message("Added " + std::to_string(songs) + " from " + std::string(YOUTUBE_LIST_URL) + playlistId));
                 }
-
             }
         );
     }
