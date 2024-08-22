@@ -6,6 +6,8 @@ add_executable(${PROJ_NAME}
     ${PROJECT_SOURCE_DIR}/src/ENV/parseENV.c
     ${PROJECT_SOURCE_DIR}/src/MUSIC/music_queue.cpp
     ${PROJECT_SOURCE_DIR}/src/MUSIC/youtube.cpp
+    ${PROJECT_SOURCE_DIR}/src/MUSIC/spotify.cpp
+    ${PROJECT_SOURCE_DIR}/src/MUSIC/music.cpp
     ${PROJECT_SOURCE_DIR}/src/SERVER/server.cpp
     ${PROJECT_SOURCE_DIR}/src/DISCORD/discord.cpp
     ${PROJECT_SOURCE_DIR}/src/main.cpp
