@@ -160,10 +160,10 @@ void spotify::handle_playlist(const dpp::slashcommand_t &event, music_queue *que
     // iterate through items
     for (dpp::json track : playlist["items"])
     {
-        if (track.contains("name"))
+        if (track.contains("name") || track.contains("track"))
         {
             songs++;
-            handle_track(event, queue, track);
+            handle_track(event, queue, track.contains("name") ? track : track["track"]);
         }
     }
 
