@@ -14,6 +14,7 @@ class youtube
 {
     public:
         static void setAPIkey(std::string API_KEY) { YOUTUBE_API_KEY = API_KEY;}
+        static void parseURL(const dpp::slashcommand_t& event, std::string link, music_queue* queue);
         static void handle_video(const dpp::slashcommand_t& event, std::string videoId, music_queue* queue, bool doReply = true);
         static void handle_playlist(const dpp::slashcommand_t& event, std::string playlistId, music_queue* queue);
     private:

@@ -62,7 +62,37 @@ song youtube::create_song(std::string data)
     return new_song;
 }
 
-void youtube::handle_video(const dpp::slashcommand_t& event, std::string videoId, music_queue* queue, bool doReply)
+void youtube::parseURL(const dpp::slashcommand_t& event, std::string link, music_queue *queue)
+{
+    link.erase(0, 1);
+    size_t mark = link.find('?');
+    std::string type = link.substr(0, mark);
+    size_t equals = link.find('=', mark);
+    size_t aaron = link.find('&', equals);
+    std::string id = link.substr(equals+1, (aaron-equals) - 1);
+    
+    // /playlist?list=<id>
+    if (type == "playlist")
+    {
+        youtube::handle_playlist(event, id, queue);
+    }
+    // ?v=<id>
+    else if (type == "watch")
+    {
+        youtube::handle_video(event, id, queue); 
+    }
+    // either /live/<id>? or /<id>?
+    else
+    {
+        id = type;
+        size_t slash2 = type.find('/');
+        if (slash2 == std::string::npos)
+            id = type.substr(slash2+1);
+        youtube::handle_video(event, id, queue);
+    }
+}
+
+void youtube::handle_video(const dpp::slashcommand_t &event, std::string videoId, music_queue *queue, bool doReply)
 {
     if (!YOUTUBE_API_KEY.empty())
         event.from->creator->request(
@@ -258,7 +288,6 @@ std::string youtube::convertDuration(std::string old_duration)
         curr = old_duration.find('H', start);
         if (curr != std::string::npos)
         {
-            std::cout << "stoul: " + old_duration.substr(start+1, (curr-start) - 1) << "\n";
             hours += std::stoul(old_duration.substr(start+1, (curr-start) - 1));
             start = curr;
         }

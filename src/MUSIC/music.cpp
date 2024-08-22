@@ -46,34 +46,9 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                 size_t slash = search_term.find('/', 8);
                 std::string platform = link.substr(8, slash - 8);
                 // music
-                if (platform == "www.youtube.com" || platform == "youtube.com" || platform == "youtu.be" || platform == "youtube.music.com")
+                if (platform == "www.youtube.com" || platform == "youtube.com" || platform == "youtu.be" || platform == "music.youtube.com")
                 {
-                    size_t mark = search_term.find('?', slash);
-                    std::string type = search_term.substr(slash+1, (mark-slash)-1);
-                    size_t equals = search_term.find('=', mark);
-                    size_t aaron = search_term.find('&', equals);
-                    std::string id = search_term.substr(equals+1, (aaron-equals) - 1);
-                    
-
-                    // /playlist?list=<id>
-                    if (type == "playlist")
-                    {
-                        youtube::handle_playlist(event, id, queue);
-                    }
-                    // ?v=<id>
-                    else if (type == "watch")
-                    {
-                        youtube::handle_video(event, id, queue); 
-                    }
-                    // either /live/<id>? or /<id>?
-                    else
-                    {
-                        id = type;
-                        size_t slash2 = type.find('/');
-                        if (slash2 == std::string::npos)
-                            id = type.substr(slash2+1);
-                        youtube::handle_video(event, id, queue);
-                    }
+                    youtube::parseURL(event, search_term.substr(slash), queue);
                 }
                 // spotify
                 else if (platform == "open.spotify.com")
