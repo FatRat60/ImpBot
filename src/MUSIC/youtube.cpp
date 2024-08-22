@@ -107,7 +107,7 @@ void youtube::handle_video(const dpp::slashcommand_t &event, std::string videoId
                     auto voice = event.from->get_voice(event.command.guild_id);
                     while (!voice || !voice->voiceclient)
                         voice = event.from->get_voice(event.command.guild_id);
-
+                    
                     // create song struct and enqueue it
                     song new_song;
                     new_song.url = YOUTUBE_VIDEO_URL;
@@ -171,8 +171,11 @@ void youtube::handle_playlist_item(const dpp::slashcommand_t& event, dpp::json& 
 {
     for (dpp::json item : playlistItem["items"])
     {
-        songs++;
-        handle_video(event, item["snippet"]["resourceId"]["videoId"], queue, false);
+        if (item["snippet"]["title"] != "Deleted video")
+        {
+            songs++;
+            handle_video(event, item["snippet"]["resourceId"]["videoId"], queue, false);
+        }
     }
 
     std::string playlistId = playlistItem["items"][0]["snippet"]["playlistId"];
