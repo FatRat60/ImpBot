@@ -152,7 +152,8 @@ void spotify::handle_track(const dpp::slashcommand_t &event, music_queue *queue,
         query += " ";
         query += artist["name"];
     }
-    youtube::ytsearch(event, query, queue, false);
+    std::thread t([event, query, queue](){ youtube::ytsearch(event, query, queue, false); });
+    t.detach();
 }
 
 void spotify::handle_playlist(const dpp::slashcommand_t &event, music_queue *queue, dpp::json& playlist, size_t songs)
