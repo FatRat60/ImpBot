@@ -117,7 +117,7 @@ bool music_queue::remove_from_queue(size_t start, size_t end)
     if (start < queue.size())
     {
         // sanitize end
-
+        start += start == 0; // if start is 0 make it 1
         if (end == std::string::npos || end == queue.size())
             queue.erase(queue.begin() + start, queue.end());
         else
