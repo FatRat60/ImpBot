@@ -92,6 +92,22 @@ void youtube::parseURL(const dpp::slashcommand_t& event, std::string link, music
     }
 }
 
+void youtube::ytsearch(const dpp::slashcommand_t &event, std::string query, music_queue *queue, bool doReply)
+{
+    std::string cmd = "yt-dlp -q --no-warnings --flat-playlist --no-playlist --print \"id\" \"ytsearch1:" + query + "\"";
+    char buffer[50];
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+    if (pipe)
+    { 
+        fgets(buffer, 50, pipe.get());
+        std::string id = buffer;
+        id.pop_back();
+        youtube::handle_video(event, id, queue, doReply);
+    }
+    else
+        event.edit_original_response(dpp::message("Broken Pipe"));
+}
+
 void youtube::handle_video(const dpp::slashcommand_t &event, std::string videoId, music_queue *queue, bool doReply)
 {
     if (!YOUTUBE_API_KEY.empty())

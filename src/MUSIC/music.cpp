@@ -53,7 +53,7 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                 // spotify
                 else if (platform == "open.spotify.com")
                 {
-                    spotify::parseURL(event, search_term.substr(slash));
+                    spotify::parseURL(event, queue, search_term.substr(slash));
                 }
                 // soundcloud
                 else if (platform == "soundcloud.com")
@@ -66,18 +66,7 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
             // user sent a query. Search music
             else
             {
-                std::string cmd = "yt-dlp -q --no-warnings --flat-playlist --no-playlist --print \"id\" \"ytsearch1:" + search_term + "\"";
-                char buffer[50];
-                std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
-                if (pipe)
-                { 
-                    fgets(buffer, 50, pipe.get());
-                    std::string id = buffer;
-                    id.pop_back();
-                    youtube::handle_video(event, id, queue);
-                }
-                else
-                    event.edit_original_response(dpp::message("Broken Pipe"));
+                youtube::ytsearch(event, search_term, queue);
             }
         });
     }

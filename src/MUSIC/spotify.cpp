@@ -6,7 +6,7 @@ std::string spotify::SPOTIFY_ACCESS_TOKEN;
 std::string spotify::SPOTIFY_REFRESH_TOKEN;
 std::mutex spotify::token_mutex;
 
-void spotify::parseURL(const dpp::slashcommand_t& event, std::string url)
+void spotify::parseURL(const dpp::slashcommand_t& event, music_queue* queue, std::string url)
 {
     // remove / from beginning
     url.erase(0, 1);
@@ -23,18 +23,14 @@ void spotify::parseURL(const dpp::slashcommand_t& event, std::string url)
             std::string type = url.substr(0, slash);
             std::string endpoint;
             if (type == "playlist")
-                endpoint = "/playlists/" + id + "/tracks";
+                endpoint = "/playlists/" + id + "/tracks?market=US&limit=50&fields=" + dpp::utility::url_encode("next,items(track(name,artists.name))") + "&offset=0";
             else if (type == "album")
-                endpoint = "/albums/" + id + "/tracks";
+                endpoint = "/albums/" + id + "/tracks?market=US&limit=50&offset=0";
             else
-                endpoint = "/tracks/" + id;
+                endpoint = "/tracks/" + id + "?market=US";
 
-            std::string access_token = hasAccessToken(event, endpoint);
-            if (!access_token.empty())
-            {
-                //makeRequest(endpoint);
-                return;
-            }
+            makeRequest(event, queue, endpoint);
+            return;
         }
     }
     event.edit_original_response(dpp::message("Could not parse spotify link."));
@@ -44,7 +40,7 @@ void spotify::parseURL(const dpp::slashcommand_t& event, std::string url)
 hasAccessToken will make http request. Otherwise it makes the POST call to refresh/create token and 
 in that callback will make the http request. Calling thread should do nothing if returns empty str
 */
-std::string spotify::hasAccessToken(const dpp::slashcommand_t& event, std::string& endpoint)
+std::string spotify::hasAccessToken(const dpp::slashcommand_t& event, music_queue* queue, std::string& endpoint, size_t songs)
 {
     std::lock_guard<std::mutex> guard(token_mutex);
     // no access token
@@ -66,7 +62,7 @@ std::string spotify::hasAccessToken(const dpp::slashcommand_t& event, std::strin
         // call api
         event.from->creator->request(
             url, dpp::m_post,
-            [event, endpoint](const dpp::http_request_completion_t& reply){
+            [event, endpoint, queue, songs](const dpp::http_request_completion_t& reply){
                 if (reply.status == 200)
                 {
                     std::lock_guard<std::mutex> guard(spotify::token_mutex);
@@ -80,8 +76,8 @@ std::string spotify::hasAccessToken(const dpp::slashcommand_t& event, std::strin
                     if (json.contains("expires_in"))
                     {
                         size_t expire_time = json["expires_in"];
-                        if (expire_time > 10)
-                            expire_time -= 10;
+                        if (expire_time > 30)
+                            expire_time -= 30;
                         event.from->creator->start_timer(
                             [bot = event.from->creator](const dpp::timer& timer){
                                 std::lock_guard<std::mutex> guard(spotify::token_mutex);
@@ -92,7 +88,12 @@ std::string spotify::hasAccessToken(const dpp::slashcommand_t& event, std::strin
                     }
                     
                     // with new credentials make the new request
-                    // spotify::makeRequest(endpoint);
+                    event.from->creator->request(
+                        std::string(SPOTIFY_ENDPOINT) + endpoint, dpp::m_get,
+                        [event, queue, songs](const dpp::http_request_completion_t& reply){
+                            spotify::handle_reply(event, queue, reply, songs);
+                        }, "", "", { {"Authorization", "Bearer  " + spotify::SPOTIFY_ACCESS_TOKEN} }
+                    );
                 }
                 else
                     event.edit_original_response(dpp::message("there was an error getting authorization:\n" + reply.body));
@@ -102,4 +103,82 @@ std::string spotify::hasAccessToken(const dpp::slashcommand_t& event, std::strin
     }
     else
         return SPOTIFY_ACCESS_TOKEN;
-}   
+}
+
+void spotify::makeRequest(const dpp::slashcommand_t& event, music_queue* queue, std::string endpoint, size_t songs)
+{
+    std::string access_token = hasAccessToken(event, queue, endpoint, songs);
+    if (!access_token.empty())
+        event.from->creator->request(
+            std::string(SPOTIFY_ENDPOINT) + endpoint, dpp::m_get,
+            [event, queue, songs](const dpp::http_request_completion_t& reply){
+                spotify::handle_reply(event, queue, reply, songs);
+            }, "", "", { {"Authorization", "Bearer  " + access_token} }
+        );
+}
+
+void spotify::handle_reply(const dpp::slashcommand_t &event, music_queue *queue, const dpp::http_request_completion_t &reply, size_t songs)
+{
+    if (reply.status == 200)
+    {
+        dpp::json json = dpp::json::parse(reply.body);
+        // dealing with an album or playlist
+        if (json.contains("items"))
+        {
+            handle_playlist(event, queue, json, songs);
+        }
+        else
+        {
+            handle_track(event, queue, json);
+            std::string name = json["name"];
+            event.edit_original_response(dpp::message("Added " + name + " from Spotify"));
+        }
+    }
+    else if (reply.status == 429)
+    {
+        event.edit_original_response(dpp::message("Rate-limited. No more spotify until tomorrow. :("));
+    }
+    else
+        event.edit_original_response(dpp::message("There was an issue with queueing that song. Please try smth else"));
+}
+
+void spotify::handle_track(const dpp::slashcommand_t &event, music_queue *queue, dpp::json& track)
+{
+    // build search query for yt : "<track name> <artist names>"
+    std::string query;
+    query += track["name"];
+    for (dpp::json artist : track["artists"])
+    {
+        query += " ";
+        query += artist["name"];
+    }
+    youtube::ytsearch(event, query, queue, false);
+}
+
+void spotify::handle_playlist(const dpp::slashcommand_t &event, music_queue *queue, dpp::json& playlist, size_t songs)
+{
+    // iterate through items
+    for (dpp::json track : playlist["items"])
+    {
+        if (track.contains("name"))
+        {
+            songs++;
+            handle_track(event, queue, track);
+        }
+    }
+
+    // go to next page if it exists
+    if (!playlist["next"].is_null())
+    {
+        std::string next = playlist["next"];
+        // get rid of bs locale stuff at end
+        next = next.substr(0, next.rfind('&'));
+        size_t equals = next.rfind('=');
+        std::string fields = next.substr(equals+1);
+        next = next.substr(0, equals);
+        next += dpp::utility::url_encode(fields);
+        makeRequest(event, queue, next, songs);
+    }
+    else
+        event.edit_original_response(dpp::message("Added " + std::to_string(songs) + " songs from Spotify!"));
+}
