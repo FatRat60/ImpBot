@@ -2,8 +2,6 @@
 #include <string>
 #include <dpp/dpp.h>
 #include "discord.h"
-#include "server.h"
-#include "youtube.h"
 extern "C" {
     #include "parseENV.h"
 }
@@ -32,7 +30,7 @@ int main(int argc, char *argv[])
         {
             char* var3 = get_env_var("SPOTIFY_CLIENT_SECRET");
             if (var3)
-                youtube::setSpotifyId(std::string(var2), std::string(var3));
+                spotify::setSpotifyId(std::string(var2), std::string(var3));
         }
             
         std::string TOKEN(var);
@@ -56,10 +54,10 @@ int main(int argc, char *argv[])
         });
 
         // handle button clicks
-        bot.on_button_click([](const dpp::button_click_t& event){ youtube::handle_button_press(event); });
+        bot.on_button_click([](const dpp::button_click_t& event){ music::handle_button_press(event); });
 
         // handle passing marker in audio
-        bot.on_voice_track_marker([](const dpp::voice_track_marker_t& marker){ youtube::handle_marker(marker); });
+        bot.on_voice_track_marker([](const dpp::voice_track_marker_t& marker){ music::handle_marker(marker); });
 
         // handle autocomplete
         bot.on_autocomplete([&bot](const dpp::autocomplete_t& event) {

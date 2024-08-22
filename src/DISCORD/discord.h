@@ -1,6 +1,8 @@
 #ifndef DISCORD_H
 #define DISCORD_H
 
+#include "music.h"
+#include "server.h"
 #include <dpp/dpp.h>
 #include <string>
 #include <unordered_map>

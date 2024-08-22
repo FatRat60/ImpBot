@@ -1,6 +1,4 @@
 #include "discord.h"
-#include "youtube.h"
-#include "server.h"
 #include <oggz/oggz.h>
 
 std::unordered_map<std::string, command_name> discord::command_map;
@@ -96,27 +94,27 @@ void discord::handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event)
             break;
 
         case PLAY:
-            youtube::play(bot, event);
+            music::play(bot, event);
             break;
 
         case PAUSE:
-            youtube::pause(bot, event);
+            music::pause(bot, event);
             break;
 
         case STOP:
-            youtube::stop(bot, event);
+            music::stop(bot, event);
             break;
 
         case SKIP:
-            youtube::skip(bot, event);
+            music::skip(bot, event);
             break;
 
         case QUEUE:
-            youtube::queue(event);
+            music::queue(event);
             break;
 
         case REMOVE:
-            youtube::remove(event);
+            music::remove(event);
             break;
 
         case START:
@@ -131,7 +129,7 @@ void discord::handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event)
             server::ip(bot, event);
             break;
         case SHUFFLE:
-            youtube::shuffle(event);
+            music::shuffle(event);
             break;
         }
     }
@@ -206,7 +204,7 @@ void discord::leave(dpp::cluster& bot, const dpp::slashcommand_t& event)
     auto current_vc = event.from->get_voice(event.command.guild_id);
     if (current_vc)
     {
-        youtube::handle_voice_leave(event);
+        music::handle_voice_leave(event);
         std::this_thread::sleep_for(std::chrono::seconds(1));
         current_vc->voiceclient->stop_audio();
         event.from->disconnect_voice(event.command.guild_id);
