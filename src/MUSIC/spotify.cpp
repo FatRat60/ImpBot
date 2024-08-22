@@ -147,10 +147,10 @@ void spotify::handle_track(const dpp::slashcommand_t &event, music_queue *queue,
     // build search query for yt : "<track name> <artist names>"
     std::string query;
     query += track["name"];
-    for (dpp::json artist : track["artists"])
+    if (track["artists"].size() > 0)
     {
-        query += " ";
-        query += artist["name"];
+        std::string name = track["artists"].front();
+        query += " " + name;
     }
     std::thread t([event, query, queue](){ youtube::ytsearch(event, query, queue, false); });
     t.detach();
