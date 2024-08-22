@@ -103,11 +103,17 @@ void youtube::handle_video(const dpp::slashcommand_t &event, std::string videoId
                     // parse body
                     dpp::json json = dpp::json::parse(reply.body);
 
+                    if (json["items"][0]["snippet"]["title"] == "Deleted video")
+                    {
+                        event.edit_original_response(dpp::message("Cannot queue deleted Video"));
+                        return;
+                    }
+
                     // get voice
                     auto voice = event.from->get_voice(event.command.guild_id);
                     while (!voice || !voice->voiceclient)
                         voice = event.from->get_voice(event.command.guild_id);
-                    
+
                     // create song struct and enqueue it
                     song new_song;
                     new_song.url = YOUTUBE_VIDEO_URL;
