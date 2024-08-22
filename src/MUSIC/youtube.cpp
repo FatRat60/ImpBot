@@ -102,9 +102,12 @@ void youtube::ytsearch(const dpp::slashcommand_t &event, std::string query, musi
         fgets(buffer, 50, pipe.get());
         std::string id = buffer;
         id.pop_back();
-        youtube::handle_video(event, id, queue, doReply);
+        if (!id.empty())
+            youtube::handle_video(event, id, queue, doReply);
+        else if (doReply)
+            event.edit_original_response(dpp::message("No results returned for: " + query));
     }
-    else
+    else if (doReply)
         event.edit_original_response(dpp::message("Broken Pipe"));
 }
 
@@ -131,22 +134,27 @@ void youtube::handle_video(const dpp::slashcommand_t &event, std::string videoId
                         voice = event.from->get_voice(event.command.guild_id);
 
                     // create song struct and enqueue it
-                    song new_song;
-                    new_song.url = YOUTUBE_VIDEO_URL;
-                    new_song.title = json["items"][0]["snippet"]["title"];
-                    new_song.thumbnail = json["items"][0]["snippet"]["thumbnails"]["default"]["url"];
-                    new_song.duration = convertDuration(json["items"][0]["contentDetails"]["duration"]);
-                    //new_song.duration = json["items"][0]["contentDetails"]["duration"];
-                    new_song.type = (song_type)(json["items"][0]["snippet"]["liveBroadcastContent"] != "none");
-                    new_song.url += videoId;
-
-                    bool res = queue->enqueue(voice->voiceclient, new_song);
-                    if (doReply)
+                    try
                     {
-                        if (res)
-                            event.edit_original_response(dpp::message("Added " + new_song.url));
-                        else
-                            event.edit_original_response(dpp::message("There was an issue queueing that song"));
+                        song new_song;
+                        new_song.url = YOUTUBE_VIDEO_URL;
+                        new_song.title = json["items"][0]["snippet"]["title"];
+                        new_song.thumbnail = json["items"][0]["snippet"]["thumbnails"]["default"]["url"];
+                        new_song.duration = convertDuration(json["items"][0]["contentDetails"]["duration"]);
+                        new_song.type = (song_type)(json["items"][0]["snippet"]["liveBroadcastContent"] != "none");
+                        new_song.url += videoId;
+                        bool res = queue->enqueue(voice->voiceclient, new_song);
+                        if (doReply)
+                        {
+                            if (res)
+                                event.edit_original_response(dpp::message("Added " + new_song.url));
+                            else
+                                event.edit_original_response(dpp::message("There was an issue queueing that song"));
+                    }
+                    }
+                    catch(const std::exception& e)
+                    {
+                        std::cout << json.dump();
                     }
                 }
                 // rate-limit
