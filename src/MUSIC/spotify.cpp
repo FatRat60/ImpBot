@@ -29,7 +29,7 @@ void spotify::parseURL(const dpp::slashcommand_t& event, music_queue* queue, std
             else
                 endpoint = "/tracks/" + id + "?market=US";
 
-            makeRequest(event, queue, endpoint);
+            makeRequest(event, queue, std::string(SPOTIFY_ENDPOINT) + endpoint);
             return;
         }
     }
@@ -89,7 +89,7 @@ std::string spotify::hasAccessToken(const dpp::slashcommand_t& event, music_queu
                     
                     // with new credentials make the new request
                     event.from->creator->request(
-                        std::string(SPOTIFY_ENDPOINT) + endpoint, dpp::m_get,
+                        endpoint, dpp::m_get,
                         [event, queue, songs](const dpp::http_request_completion_t& reply){
                             spotify::handle_reply(event, queue, reply, songs);
                         }, "", "", { {"Authorization", "Bearer  " + spotify::SPOTIFY_ACCESS_TOKEN} }
@@ -110,7 +110,7 @@ void spotify::makeRequest(const dpp::slashcommand_t& event, music_queue* queue, 
     std::string access_token = hasAccessToken(event, queue, endpoint, songs);
     if (!access_token.empty())
         event.from->creator->request(
-            std::string(SPOTIFY_ENDPOINT) + endpoint, dpp::m_get,
+            endpoint, dpp::m_get,
             [event, queue, songs](const dpp::http_request_completion_t& reply){
                 spotify::handle_reply(event, queue, reply, songs);
             }, "", "", { {"Authorization", "Bearer  " + access_token} }
@@ -149,7 +149,7 @@ void spotify::handle_track(const dpp::slashcommand_t &event, music_queue *queue,
     query += track["name"];
     if (track["artists"].size() > 0)
     {
-        std::string name = track["artists"].front();
+        std::string name = track["artists"][0]["name"];
         query += " " + name;
     }
     std::thread t([event, query, queue](){ youtube::ytsearch(event, query, queue, false); });
@@ -172,13 +172,9 @@ void spotify::handle_playlist(const dpp::slashcommand_t &event, music_queue *que
     if (!playlist["next"].is_null())
     {
         std::string next = playlist["next"];
-        // get rid of bs locale stuff at end
-        next = next.substr(0, next.rfind('&'));
         size_t equals = next.rfind('=');
         std::string fields = next.substr(equals+1);
-        next = next.substr(0, equals);
-        next += dpp::utility::url_encode(fields);
-        makeRequest(event, queue, next, songs);
+        makeRequest(event, queue, next.substr(0, equals+1) + dpp::utility::url_encode(fields), songs);
     }
     else
         event.edit_original_response(dpp::message("Added " + std::to_string(songs) + " songs from Spotify!"));
