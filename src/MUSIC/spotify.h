@@ -20,9 +20,9 @@ class spotify
         static std::string SPOTIFY_REFRESH_TOKEN;
         static std::string hasAccessToken(const dpp::slashcommand_t& event, music_queue* queue, std::string& endpoint, size_t songs);
         static void makeRequest(const dpp::slashcommand_t& event, music_queue* queue, std::string endpoint, size_t songs = 0);
-        static void handle_reply(const dpp::slashcommand_t& event, music_queue* queue, const dpp::http_request_completion_t& reply, size_t songs);
-        static void handle_track(const dpp::slashcommand_t& event, music_queue* queue, dpp::json& track);
-        static void handle_playlist(const dpp::slashcommand_t& event, music_queue* queue, dpp::json& playlist, size_t songs);
+        static void handleReply(const dpp::slashcommand_t& event, music_queue* queue, const dpp::http_request_completion_t& reply, size_t songs);
+        static void handleTrack(const dpp::slashcommand_t& event, music_queue* queue, dpp::json& track);
+        static void handlePlaylist(const dpp::slashcommand_t& event, music_queue* queue, dpp::json& playlist, size_t songs);
 };
 
 #endif
