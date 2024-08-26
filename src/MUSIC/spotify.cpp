@@ -117,7 +117,7 @@ void spotify::makeRequest(const dpp::slashcommand_t& event, music_queue* queue, 
         );
 }
 
-void spotify::handle_reply(const dpp::slashcommand_t &event, music_queue *queue, const dpp::http_request_completion_t &reply, size_t songs)
+void spotify::handle_reply(const dpp::slashcommand_t& event, music_queue* queue, const dpp::http_request_completion_t& reply, size_t songs)
 {
     if (reply.status == 200)
     {
@@ -142,7 +142,7 @@ void spotify::handle_reply(const dpp::slashcommand_t &event, music_queue *queue,
         event.edit_original_response(dpp::message("There was an issue with queueing that song. Please try smth else"));
 }
 
-void spotify::handle_track(const dpp::slashcommand_t &event, music_queue *queue, dpp::json& track)
+void spotify::handle_track(const dpp::slashcommand_t& event, music_queue* queue, dpp::json& track)
 {
     // build search query for yt : "<track name> <artist names>"
     std::string query;
@@ -156,7 +156,7 @@ void spotify::handle_track(const dpp::slashcommand_t &event, music_queue *queue,
     t.detach();
 }
 
-void spotify::handle_playlist(const dpp::slashcommand_t &event, music_queue *queue, dpp::json& playlist, size_t songs)
+void spotify::handle_playlist(const dpp::slashcommand_t& event, music_queue* queue, dpp::json& playlist, size_t songs)
 {
     // iterate through items
     for (dpp::json track : playlist["items"])
