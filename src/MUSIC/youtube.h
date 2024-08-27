@@ -14,15 +14,15 @@ class youtube
 {
     public:
         static void setAPIkey(std::string API_KEY) { YOUTUBE_API_KEY = API_KEY;}
-        static void parseURL(const dpp::slashcommand_t& event, std::string link, music_queue* queue);
-        static void ytsearch(const dpp::slashcommand_t& event, std::string query, music_queue* queue, bool doReply = true);
+        static void parseURL(const dpp::slashcommand_t& event, std::string link);
+        static void ytsearch(const dpp::slashcommand_t& event, std::string query, bool doReply = true);
     private:
         static std::string YOUTUBE_API_KEY;
         static std::mutex token_mutex;
-        static void makeRequest(const dpp::slashcommand_t& event, music_queue* queue, std::string endpoint, bool doReply = true, size_t songs = 0);
-        static void handleReply(const dpp::slashcommand_t& event, music_queue* queue, const dpp::http_request_completion_t& reply, bool doReply, size_t songs);
-        static void handleVideo(const dpp::slashcommand_t& event, music_queue* queue, dpp::json& video, bool doReply);
-        static void handlePlaylist(const dpp::slashcommand_t& event, music_queue* queue, dpp::json& playlist, bool doReply, size_t songs = 0);
+        static void makeRequest(const dpp::slashcommand_t& event, std::string endpoint, bool doReply = true, size_t songs = 0);
+        static void handleReply(const dpp::slashcommand_t& event, const dpp::http_request_completion_t& reply, bool doReply, size_t songs);
+        static void handleVideo(const dpp::slashcommand_t& event, dpp::json& video, bool doReply);
+        static void handlePlaylist(const dpp::slashcommand_t& event, dpp::json& playlist, bool doReply, size_t songs = 0);
         static song createSong(dpp::json& video);
         static std::string convertDuration(std::string old_duration);
 };  

@@ -11,21 +11,21 @@
 std::string youtube::YOUTUBE_API_KEY;
 std::mutex youtube::token_mutex;
 
-void youtube::makeRequest(const dpp::slashcommand_t& event, music_queue* queue, std::string endpoint, bool doReply, size_t songs)
+void youtube::makeRequest(const dpp::slashcommand_t& event, std::string endpoint, bool doReply, size_t songs)
 {
     std::lock_guard<std::mutex> guard(token_mutex);
     // call api if key exists
     if (!YOUTUBE_API_KEY.empty())
         event.from->creator->request(
             endpoint + YOUTUBE_API_KEY, dpp::m_get,
-            [event, queue, songs, doReply](const dpp::http_request_completion_t& reply){
-                handleReply(event, queue, reply, doReply, songs);
+            [event, songs, doReply](const dpp::http_request_completion_t& reply){
+                handleReply(event, reply, doReply, songs);
             }
         );
     else // no api key, rate-limited. use yt-dlp
     {
         // spawn thread so mutex does not stay locked
-        std::thread t([event, queue, endpoint, doReply](){
+        std::thread t([event, endpoint, doReply](){
             size_t slash = endpoint.rfind('/');
             size_t mark = endpoint.find('?', slash);
             std::string type = endpoint.substr(slash, mark-slash);
@@ -35,18 +35,18 @@ void youtube::makeRequest(const dpp::slashcommand_t& event, music_queue* queue, 
             item["id"] = endpoint.substr(equals+1, (aaron-equals)-1);
             if (type == "/playlistItems")
             {
-                handlePlaylist(event, queue, item, doReply);
+                handlePlaylist(event, item, doReply);
             }
             else
             {
-                handleVideo(event, queue, item, doReply);
+                handleVideo(event, item, doReply);
             }
         });
         t.detach();
     }
 }
 
-void youtube::handleReply(const dpp::slashcommand_t& event, music_queue* queue, const dpp::http_request_completion_t& reply, bool doReply, size_t songs)
+void youtube::handleReply(const dpp::slashcommand_t& event, const dpp::http_request_completion_t& reply, bool doReply, size_t songs)
 {
     // we are bing. parse body and either call handleVideo or handlePlaylist
     if (reply.status == 200)
@@ -55,9 +55,9 @@ void youtube::handleReply(const dpp::slashcommand_t& event, music_queue* queue, 
 
         std::string response_type = json["kind"];
         if (response_type == "youtube#videoListResponse")
-            handleVideo(event, queue, json["items"][0], doReply);
+            handleVideo(event, json["items"][0], doReply);
         else
-            handlePlaylist(event, queue, json, doReply, songs);
+            handlePlaylist(event, json, doReply, songs);
     }
     // ruh roh we got ratelimited. Set api key to "" and set timer for midnight which will reinstate api key
     else if (reply.status == 429)
@@ -70,12 +70,8 @@ void youtube::handleReply(const dpp::slashcommand_t& event, music_queue* queue, 
         event.edit_original_response(dpp::message("There was an error making the request to youtube"));
 }
 
-void youtube::handleVideo(const dpp::slashcommand_t& event, music_queue* queue, dpp::json& video, bool doReply)
+void youtube::handleVideo(const dpp::slashcommand_t& event, dpp::json& video, bool doReply)
 {
-    auto voice = event.from->get_voice(event.command.guild_id);
-    while (!voice || !voice->voiceclient)
-        voice = event.from->get_voice(event.command.guild_id);
-
     // use yt-dlp to get json
     if (!video.contains("snippet"))
     {
@@ -112,7 +108,8 @@ void youtube::handleVideo(const dpp::slashcommand_t& event, music_queue* queue, 
     // queue the song
     if (!new_song.url.empty())
     {
-        bool res = queue->enqueue(voice->voiceclient, new_song);
+        music_queue* queue = music_queue::getQueue(event.command.guild_id);
+        bool res = queue && queue->enqueue(new_song);
         if (doReply)
         {
             if (res)
@@ -123,7 +120,7 @@ void youtube::handleVideo(const dpp::slashcommand_t& event, music_queue* queue, 
     }
 }
 
-void youtube::handlePlaylist(const dpp::slashcommand_t& event, music_queue* queue, dpp::json& playlist, bool doReply, size_t songs)
+void youtube::handlePlaylist(const dpp::slashcommand_t& event, dpp::json& playlist, bool doReply, size_t songs)
 {
     // json from youtube api
     if (playlist.contains("items"))
@@ -132,7 +129,7 @@ void youtube::handlePlaylist(const dpp::slashcommand_t& event, music_queue* queu
         for (dpp::json video : playlist["items"])
         {
             songs++;
-            makeRequest(event, queue, 
+            makeRequest(event, 
             std::string(YOUTUBE_ENDPOINT) + "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") 
             + "&id=" + video["snippet"]["resourceId"]["videoId"].get<std::string>() + "&key=", false);
         }
@@ -140,7 +137,7 @@ void youtube::handlePlaylist(const dpp::slashcommand_t& event, music_queue* queu
         // next page of songs to add
         if (playlist.contains("nextPageToken"))
         {
-            makeRequest(event, queue, 
+            makeRequest(event, 
                 std::string(YOUTUBE_ENDPOINT) + "/playlistItems?part=snippet&playlistId=" 
                 + playlist["items"][0]["snippet"]["playlistId"].get<std::string>()
                 + "&maxResults=50&pageToken=" + playlist["nextPageToken"].get<std::string>() + "&key=",
@@ -152,10 +149,6 @@ void youtube::handlePlaylist(const dpp::slashcommand_t& event, music_queue* queu
     }
     else
     {
-        auto voice = event.from->get_voice(event.command.guild_id);
-        while (!voice || !voice->voiceclient)
-            voice = event.from->get_voice(event.command.guild_id);
-
         std::string cmd = "yt-dlp -q --no-warnings --output-na-placeholder \"\\\"\\\"\" --flat-playlist --print \"{\\\"duration\\\":%(duration_string)j,\\\"id\\\":%(id)j,\\\"title\\\":%(title)j, \\\"thumbnail\\\":%(thumbnail)j}\" "
             + std::string(YOUTUBE_LIST_URL) + playlist["id"].get<std::string>();
         std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
@@ -169,8 +162,14 @@ void youtube::handlePlaylist(const dpp::slashcommand_t& event, music_queue* queu
                 song new_song = createSong(json);
                 if (new_song.title != "")
                 {
-                    num_songs++;
-                    queue->enqueue(voice->voiceclient, new_song);
+                    music_queue* queue = music_queue::getQueue(event.command.guild_id);
+                    if (queue)
+                    {
+                        num_songs++;
+                        queue->enqueue(new_song);
+                    }
+                    else
+                        break;
                 }
             }
 
@@ -220,7 +219,7 @@ song youtube::createSong(dpp::json& video)
     return new_song;
 }
 
-void youtube::parseURL(const dpp::slashcommand_t& event, std::string link, music_queue *queue)
+void youtube::parseURL(const dpp::slashcommand_t& event, std::string link)
 {
     link.erase(0, 1);
     std::string endpoint = YOUTUBE_ENDPOINT;
@@ -249,10 +248,10 @@ void youtube::parseURL(const dpp::slashcommand_t& event, std::string link, music
             id = type.substr(slash2+1);
         endpoint += "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") + "&id=" + id + "&key=";
     }
-    makeRequest(event, queue, endpoint);
+    makeRequest(event, endpoint);
 }
 
-void youtube::ytsearch(const dpp::slashcommand_t &event, std::string query, music_queue *queue, bool doReply)
+void youtube::ytsearch(const dpp::slashcommand_t &event, std::string query, bool doReply)
 {
     std::string cmd = "yt-dlp -q --no-warnings --flat-playlist --no-playlist --print \"id\" \"ytsearch1:" + query + "\"";
     char buffer[50];
@@ -263,7 +262,7 @@ void youtube::ytsearch(const dpp::slashcommand_t &event, std::string query, musi
         std::string id = buffer;
         id.pop_back();
         if (!id.empty())
-            makeRequest(event, queue, std::string(YOUTUBE_ENDPOINT) + "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") + "&id=" + id + "&key=", doReply);
+            makeRequest(event, std::string(YOUTUBE_ENDPOINT) + "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") + "&id=" + id + "&key=", doReply);
         else if (doReply)
             event.edit_original_response(dpp::message("No results returned for: " + query));
     }
