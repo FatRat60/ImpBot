@@ -46,10 +46,11 @@ int main(int argc, char *argv[])
 
         // handle joining voice
         bot.on_voice_ready([&bot](const dpp::voice_ready_t& event){
-            auto vc = event.voice_client;
-            if (vc)
+            // create music_queue for this guild
+            music_queue::getQueue(event.voice_client->server_id, event.voice_client);
+            if (event.voice_client)
             {
-                discord::hello(vc); // bot greeting
+                discord::hello(event.voice_client); // bot greeting
             }
         });
 
