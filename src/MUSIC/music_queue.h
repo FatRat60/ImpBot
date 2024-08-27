@@ -4,6 +4,7 @@
 #include <dpp/dpp.h>
 #include <mutex>
 #include <deque>
+#include <unordered_map>
 
 #define NEXT_SONG "resources/next.pcm"
 #define MAX_EMBED_VALUES 10
@@ -22,13 +23,17 @@ struct song
     std::string thumbnail;
 };
 
+
+
 class music_queue
 {
     public:
-        music_queue() { stopLivestream = false; page = 0; }
-        bool enqueue(dpp::discord_voice_client* vc, song& song_to_add);
-        bool go_next(dpp::discord_voice_client* vc);
-        void skip(dpp::discord_voice_client* vc);
+        static music_queue* getQueue(dpp::snowflake guild_id, dpp::discord_voice_client* vc = nullptr);
+        static void removeQueue(dpp::snowflake guild_id);
+        music_queue(dpp::discord_voice_client* voice) { stopLivestream = false; page = 0; vc = voice;}
+        bool enqueue(song& song_to_add);
+        bool go_next();
+        void skip();
         void clear_queue();
         bool remove_from_queue(size_t start, size_t end);
         dpp::message get_queue_embed();
@@ -37,11 +42,14 @@ class music_queue
         dpp::message new_page(size_t num) {page = num; return get_queue_embed(); }
         void shuffle();
     private:
+        static std::unordered_map<dpp::snowflake, music_queue*> queue_map;
+        static std::mutex map_mutex;
+        dpp::discord_voice_client* vc;
         std::mutex queue_mutex;
         std::deque<song> queue;
         bool stopLivestream;
         size_t page;
-        bool handle_download(dpp::discord_voice_client* vc, std::string url);
+        bool handle_download(std::string url);
         bool preload(std::string url);
 };
 

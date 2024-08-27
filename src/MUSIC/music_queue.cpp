@@ -4,11 +4,50 @@
 #include <random>
 #include <chrono>
 
+std::unordered_map<dpp::snowflake, music_queue*> music_queue::queue_map;
+std::mutex music_queue::map_mutex;
+
+music_queue* music_queue::getQueue(dpp::snowflake guild_id, dpp::discord_voice_client* vc)
+{
+    std::lock_guard<std::mutex> guard(map_mutex);
+
+    auto res = queue_map.find(guild_id);
+    music_queue* found_queue = nullptr;
+    if (res == queue_map.end())
+    {
+        if (vc)
+        {
+            found_queue = new music_queue(vc);
+            queue_map.insert({guild_id, found_queue});
+        }
+    }
+    else
+        found_queue = res->second;
+
+    return found_queue;
+}
+
+void music_queue::removeQueue(dpp::snowflake guild_id)
+{
+    // capture the queue map mutex first
+    std::lock_guard<std::mutex> map_guard(map_mutex);
+    // retrieve music_queue from map if exists
+    auto res = queue_map.find(guild_id);
+    // music_queue exists
+    if (res != queue_map.end())
+    {
+        music_queue* queue_to_del = res->second;
+        res->second->clear_queue();
+        queue_map.erase(res); // delete from map
+        delete queue_to_del; // delete music_queue
+    }
+}
+
 /*If first song: Download and send song to discord, then add to queue
 If second song, will download locally to resources/next.pcm, then add to queue
 Else, will just add to queue. No download is performed yet.
 Returns true if download is succesful AND song is added to queue, else false*/
-bool music_queue::enqueue(dpp::discord_voice_client* vc, song& song_to_add)
+bool music_queue::enqueue(song& song_to_add)
 {
     // when the first song is a livestream 
     std::lock_guard<std::mutex> guard(queue_mutex); // acquire mutex for queue
@@ -20,13 +59,13 @@ bool music_queue::enqueue(dpp::discord_voice_client* vc, song& song_to_add)
     {
         // stream song straight to disc
         stopLivestream = false;
-        std::thread t([vc, url = song_to_add.url, this](){ this->handle_download(vc, url); });
+        std::thread t([url = song_to_add.url, this](){ this->handle_download(url); });
         t.detach();
     }
     else if (queue.size() == 2 && song_to_add.type != livestream)
     {
         // preload
-        std::thread t([vc, url = song_to_add.url, this](){ this->preload(url); });
+        std::thread t([url = song_to_add.url, this](){ this->preload(url); });
         t.detach();
     }
     return true;
@@ -36,7 +75,7 @@ bool music_queue::enqueue(dpp::discord_voice_client* vc, song& song_to_add)
 then begins streaming next song which should be located on disk at resources/next.pcm
 After streaming to discord, download next song if exists to resources/next.pcm
 If no track is next, return false, else true*/
-bool music_queue::go_next(dpp::discord_voice_client* vc)
+bool music_queue::go_next()
 {
     std::lock_guard<std::mutex> guard(queue_mutex);
 
@@ -51,7 +90,7 @@ bool music_queue::go_next(dpp::discord_voice_client* vc)
             if (next.type == livestream)
             {
                 stopLivestream = false;
-                std::thread t([vc, url = next.url, this](){ this->handle_download(vc, url); });
+                std::thread t([url = next.url, this](){ this->handle_download(url); });
                 t.detach();
             }
             else
@@ -87,7 +126,7 @@ bool music_queue::go_next(dpp::discord_voice_client* vc)
     return false;
 }
 
-void music_queue::skip(dpp::discord_voice_client* vc)
+void music_queue::skip()
 {
     if (!queue.empty() && queue.front().type == livestream)
     {
@@ -99,7 +138,7 @@ void music_queue::skip(dpp::discord_voice_client* vc)
     else // jus skipping a song
     {
         vc->skip_to_next_marker();
-        go_next(vc);
+        go_next();
     }
 }
 
@@ -225,7 +264,7 @@ void music_queue::shuffle()
 
 /*This function handles streaming of song to discord. Will release mutex and block if stream is live
 to allow queue to still add songs. Else holds mutex until download is finished*/
-bool music_queue::handle_download(dpp::discord_voice_client* vc, std::string url)
+bool music_queue::handle_download(std::string url)
 {
     std::string cmd = "yt-dlp -f 140/139/234/233 -q --no-warnings -o - --no-playlist " + url + " | ffmpeg -i pipe:.m4a -f s16le -ar 48000 -ac 2 -loglevel quiet pipe:.pcm";
     std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
