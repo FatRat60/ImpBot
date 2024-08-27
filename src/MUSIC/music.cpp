@@ -1,9 +1,6 @@
 #include "music.h"
 #include "spotify.h"
 
-std::unordered_map<dpp::snowflake, music_queue*> music::queue_map;
-std::mutex music::queue_map_mutex;
-
 void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
     // join voice channel first
@@ -40,7 +37,6 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
         [event, search_term](const dpp::confirmation_callback_t& callback){
             std::string link = search_term;
             // user sent a link
-            music_queue* queue = music::getQueue(event.command.guild_id, true);
             if (search_term.substr(0, 8) == "https://")
             {
                 size_t slash = search_term.find('/', 8);
@@ -48,12 +44,12 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                 // music
                 if (platform == "www.youtube.com" || platform == "youtube.com" || platform == "youtu.be" || platform == "music.youtube.com")
                 {
-                    youtube::parseURL(event, search_term.substr(slash), queue);
+                    youtube::parseURL(event, search_term.substr(slash));
                 }
                 // spotify
                 else if (platform == "open.spotify.com")
                 {
-                    spotify::parseURL(event, queue, search_term.substr(slash));
+                    spotify::parseURL(event, search_term.substr(slash));
                 }
                 // soundcloud
                 else if (platform == "soundcloud.com")
@@ -104,8 +100,8 @@ void music::stop(dpp::cluster& bot, const dpp::slashcommand_t& event)
         auto voice_client = voiceconn->voiceclient;
         if (voice_client->is_playing())
         {
-            music_queue& queue = *getQueue(event.command.guild_id);
-            queue.clear_queue();
+            music_queue* queue = music_queue::getQueue(event.command.guild_id);
+            queue->clear_queue();
             event.reply("Clearing queue...");
             std::this_thread::sleep_for(std::chrono::seconds(2));
             voice_client->stop_audio();
@@ -125,11 +121,11 @@ void music::skip(dpp::cluster& bot, const dpp::slashcommand_t& event)
     if (voiceconn)
     {
         auto voice_client = voiceconn->voiceclient;
-        music_queue* queue = music::getQueue(voice_client->server_id);
+        music_queue* queue = music_queue::getQueue(voice_client->server_id);
         if (queue && !queue->empty())
         {
             event.reply("Skipped");
-            queue->skip(voice_client);
+            queue->skip();
         }
         else
         {
@@ -145,7 +141,7 @@ void music::queue(const dpp::slashcommand_t &event)
     auto voice_conn = event.from->get_voice(event.command.guild_id);
     if (voice_conn) // bot is connected
     {
-        music_queue* queue = getQueue(event.command.guild_id);
+        music_queue* queue = music_queue::getQueue(event.command.guild_id);
         if (queue && !queue->empty()) // there is actually music playing
         {
             // send embed
@@ -163,7 +159,7 @@ void music::remove(const dpp::slashcommand_t &event)
     auto voice_conn = event.from->get_voice(event.command.guild_id);
     if (voice_conn)
     {
-        music_queue* queue = getQueue(event.command.guild_id);
+        music_queue* queue = music_queue::getQueue(event.command.guild_id);
         if (queue)
         {
             std::string numbers = std::get<std::string>(event.get_parameter("number"));
@@ -205,26 +201,6 @@ void music::remove(const dpp::slashcommand_t &event)
         event.reply("Not in voice");
 }
 
-music_queue* music::getQueue(const dpp::snowflake guild_id, bool create/* = false */)
-{
-    std::lock_guard<std::mutex> guard(queue_map_mutex);
-
-    auto res = queue_map.find(guild_id);
-    music_queue* found_queue = nullptr;
-    if (res == queue_map.end())
-    {
-        if (create)
-        {
-            found_queue = new music_queue();
-            queue_map.insert({guild_id, found_queue});
-        }
-    }
-    else
-        found_queue = res->second;
-
-    return found_queue;
-}
-
 void music::handle_marker(const dpp::voice_track_marker_t &marker)
 {
     // Checks if marker is to be skipped. If so will invoke skip_to_next_marker()
@@ -234,9 +210,9 @@ void music::handle_marker(const dpp::voice_track_marker_t &marker)
         std::thread t([marker]() {
             if (!marker.voice_client->terminating)
             {
-                music_queue* queue = music::getQueue(marker.voice_client->server_id);
+                music_queue* queue = music_queue::getQueue(marker.voice_client->server_id);
                 if (queue)
-                    queue->go_next(marker.voice_client);
+                    queue->go_next();
             }
         });
         t.detach();
@@ -245,9 +221,7 @@ void music::handle_marker(const dpp::voice_track_marker_t &marker)
 
 void music::handle_voice_leave(const dpp::slashcommand_t& event)
 {
-    std::unique_ptr<music_queue> queue(getQueue(event.command.guild_id));
-    queue_map.erase(event.command.guild_id);
-    queue->clear_queue();
+    music_queue::removeQueue(event.command.guild_id);
 }
 
 void music::handle_button_press(const dpp::button_click_t &event)
@@ -259,7 +233,7 @@ void music::handle_button_press(const dpp::button_click_t &event)
         if (cmd == "queue")
         {
             dpp::message msg;
-            music_queue* queue = getQueue(event.command.guild_id);
+            music_queue* queue = music_queue::getQueue(event.command.guild_id);
             if (queue)
             {
                 // refresh
@@ -283,7 +257,7 @@ void music::handle_button_press(const dpp::button_click_t &event)
         }
         else if (cmd == "shuffle")
         {
-            music_queue* queue = music::getQueue(event.command.guild_id);
+            music_queue* queue = music_queue::getQueue(event.command.guild_id);
             if (queue)
             {
                 queue->shuffle();
@@ -301,7 +275,7 @@ void music::shuffle(const dpp::slashcommand_t &event)
     auto voice = event.from->get_voice(event.command.guild_id);
     if (voice)
     {
-        music_queue* queue = getQueue(event.command.guild_id);
+        music_queue* queue = music_queue::getQueue(event.command.guild_id);
         if (queue)
         {
             queue->shuffle();

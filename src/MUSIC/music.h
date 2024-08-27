@@ -3,7 +3,6 @@
 
 #include "youtube.h"
 #include "spotify.h"
-#include <unordered_map>
 
 class music
 {
@@ -19,9 +18,6 @@ class music
         static void handle_voice_leave(const dpp::slashcommand_t& event);
         static void handle_button_press(const dpp::button_click_t& event);
     private:
-        static std::unordered_map<dpp::snowflake, music_queue*> queue_map;
-        static std::mutex queue_map_mutex;
-        static music_queue* getQueue(const dpp::snowflake guild_id, bool create = false);
 };
 
 
