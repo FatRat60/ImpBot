@@ -47,7 +47,9 @@ int main(int argc, char *argv[])
         // handle joining voice
         bot.on_voice_ready([&bot](const dpp::voice_ready_t& event){
             // create music_queue for this guild
-            music_queue::getQueue(event.voice_client->server_id, event.voice_client);
+            music_queue* queue = music_queue::getQueue(event.voice_client->server_id);
+            if (queue)
+                queue->setVoiceClient(event.voice_client);
             if (event.voice_client)
             {
                 discord::hello(event.voice_client); // bot greeting
