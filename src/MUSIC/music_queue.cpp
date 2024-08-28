@@ -7,7 +7,7 @@
 std::unordered_map<dpp::snowflake, music_queue*> music_queue::queue_map;
 std::mutex music_queue::map_mutex;
 
-music_queue* music_queue::getQueue(dpp::snowflake guild_id, dpp::discord_voice_client* vc)
+music_queue* music_queue::getQueue(dpp::snowflake guild_id, bool create)
 {
     std::lock_guard<std::mutex> guard(map_mutex);
 
@@ -15,9 +15,9 @@ music_queue* music_queue::getQueue(dpp::snowflake guild_id, dpp::discord_voice_c
     music_queue* found_queue = nullptr;
     if (res == queue_map.end())
     {
-        if (vc)
+        if (create)
         {
-            found_queue = new music_queue(vc);
+            found_queue = new music_queue();
             queue_map.insert({guild_id, found_queue});
         }
     }
@@ -43,11 +43,23 @@ void music_queue::removeQueue(dpp::snowflake guild_id)
     }
 }
 
+void music_queue::setVoiceClient(dpp::discord_voice_client *voice)
+{
+    // acquire mutex
+    std::unique_lock<std::mutex> guard(queue_mutex);
+    vc = voice;
+    // unlock mutex
+    guard.unlock();
+    // notify waiting threads that vc is ready
+    vc_ready.notify_all();
+    std::cout << "Notified\n";
+}
+
 /*If first song: Download and send song to discord, then add to queue
 If second song, will download locally to resources/next.pcm, then add to queue
 Else, will just add to queue. No download is performed yet.
 Returns true if download is succesful AND song is added to queue, else false*/
-bool music_queue::enqueue(song& song_to_add)
+bool music_queue::enqueue(song &song_to_add)
 {
     // when the first song is a livestream 
     std::lock_guard<std::mutex> guard(queue_mutex); // acquire mutex for queue
@@ -68,6 +80,7 @@ bool music_queue::enqueue(song& song_to_add)
         std::thread t([url = song_to_add.url, this](){ this->preload(url); });
         t.detach();
     }
+    std::cout << "Queued song\n";
     return true;
 }
 
@@ -130,8 +143,8 @@ void music_queue::skip()
 {
     if (!queue.empty() && queue.front().type == livestream)
     {
-        // need to signal flag to end livestream. Afterwhich a marker will get added and trigger
         std::lock_guard<std::mutex> guard(queue_mutex);
+        // need to signal flag to end livestream. Afterwhich a marker will get added and trigger
         stopLivestream = true;
         vc->skip_to_next_marker();
     }
@@ -273,6 +286,14 @@ bool music_queue::handle_download(std::string url)
     constexpr size_t buffsize = dpp::send_audio_raw_max_length;
     char buffer[dpp::send_audio_raw_max_length];
     size_t curr_read = 0;
+    
+    if (!vc)
+    {
+        std::unique_lock<std::mutex> guard(queue_mutex);
+        std::cout << "Waiting for vc\n";
+        vc_ready.wait(guard);
+        std::cout << "Continuing...\n";
+    }
 
     while (!vc->terminating && !stopLivestream && (curr_read = fread(buffer, sizeof(char), buffsize, pipe.get())) == buffsize)
         vc->send_audio_raw((uint16_t*)buffer, buffsize);
@@ -285,6 +306,7 @@ bool music_queue::handle_download(std::string url)
     if (!vc->terminating)
         vc->insert_marker("end");
 
+    std::cout << "Finished streaming bytes\n";
     return true;
 }
 

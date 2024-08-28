@@ -32,6 +32,8 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
     // query music if joined channel AND API key is init'd
     if (doMusic)
     {
+        // create queue obj
+        music_queue::getQueue(event.command.guild_id, true);
         std::string search_term = std::get<std::string>(event.get_parameter("link"));
         event.reply("Searching for " + search_term,
         [event, search_term](const dpp::confirmation_callback_t& callback){
@@ -117,15 +119,13 @@ void music::stop(dpp::cluster& bot, const dpp::slashcommand_t& event)
 
 void music::skip(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
-    auto voiceconn = event.from->get_voice(event.command.guild_id);
-    if (voiceconn)
+    music_queue* queue = music_queue::getQueue(event.command.guild_id);
+    if (queue)
     {
-        auto voice_client = voiceconn->voiceclient;
-        music_queue* queue = music_queue::getQueue(voice_client->server_id);
-        if (queue && !queue->empty())
+        if (!queue->empty())
         {
-            event.reply("Skipped");
-            queue->skip();
+        event.reply("Skipped");
+        queue->skip();
         }
         else
         {
@@ -208,11 +208,10 @@ void music::handle_marker(const dpp::voice_track_marker_t &marker)
     if (marker.track_meta == "end") // found space
     {
         std::thread t([marker]() {
-            if (!marker.voice_client->terminating)
+            music_queue* queue = music_queue::getQueue(marker.voice_client->server_id);
+            if (queue)
             {
-                music_queue* queue = music_queue::getQueue(marker.voice_client->server_id);
-                if (queue)
-                    queue->go_next();
+                queue->go_next();
             }
         });
         t.detach();

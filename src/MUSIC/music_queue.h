@@ -3,6 +3,7 @@
 
 #include <dpp/dpp.h>
 #include <mutex>
+#include <condition_variable>
 #include <deque>
 #include <unordered_map>
 
@@ -28,9 +29,10 @@ struct song
 class music_queue
 {
     public:
-        static music_queue* getQueue(dpp::snowflake guild_id, dpp::discord_voice_client* vc = nullptr);
+        static music_queue* getQueue(dpp::snowflake guild_id, bool create = false);
         static void removeQueue(dpp::snowflake guild_id);
-        music_queue(dpp::discord_voice_client* voice) { stopLivestream = false; page = 0; vc = voice;}
+        music_queue() { stopLivestream = false; page = 0; vc = nullptr; }
+        void setVoiceClient(dpp::discord_voice_client* voice);
         bool enqueue(song& song_to_add);
         bool go_next();
         void skip();
@@ -46,6 +48,7 @@ class music_queue
         static std::mutex map_mutex;
         dpp::discord_voice_client* vc;
         std::mutex queue_mutex;
+        std::condition_variable vc_ready;
         std::deque<song> queue;
         bool stopLivestream;
         size_t page;
