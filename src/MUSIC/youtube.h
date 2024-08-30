@@ -25,6 +25,7 @@ class youtube
         static void handlePlaylist(const dpp::slashcommand_t& event, dpp::json& playlist, bool doReply, size_t songs = 0);
         static song createSong(dpp::json& video);
         static std::string convertDuration(std::string old_duration);
+        static std::string getThumbnail(dpp::json& thumbnails);
 };  
 
 #endif

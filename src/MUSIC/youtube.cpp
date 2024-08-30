@@ -113,7 +113,7 @@ void youtube::handleVideo(const dpp::slashcommand_t& event, dpp::json& video, bo
         if (doReply)
         {
             if (res)
-                event.edit_original_response(dpp::message("Added " + new_song.url));
+                event.edit_original_response(queue->get_embed());
             else
                 event.edit_original_response(dpp::message("Error encountered when trying to queue the song"));
         }
@@ -192,7 +192,7 @@ song youtube::createSong(dpp::json& video)
         {
             new_song.url = YOUTUBE_VIDEO_URL;
             new_song.title = video["snippet"]["title"];
-            new_song.thumbnail = video["snippet"]["thumbnails"]["default"]["url"];
+            new_song.thumbnail = getThumbnail(video["snippet"]["thumbnails"]);
             new_song.duration = convertDuration(video["contentDetails"]["duration"]);
             new_song.type = (song_type)(video["snippet"]["liveBroadcastContent"] != "none");
             new_song.url += video["id"];
@@ -328,4 +328,20 @@ std::string youtube::convertDuration(std::string old_duration)
     else
         new_duration = old_duration;
     return new_duration;
+}
+
+std::string youtube::getThumbnail(dpp::json& thumbnails)
+{
+    std::string thumbnail_url;
+    if (thumbnails.contains("maxres"))
+        thumbnail_url = thumbnails["maxres"]["url"].get<std::string>();
+    else if (thumbnails.contains("standard"))
+        thumbnail_url = thumbnails["standard"]["url"].get<std::string>();
+    else if (thumbnails.contains("high"))
+        thumbnail_url = thumbnails["high"]["url"].get<std::string>();
+    else if (thumbnails.contains("medium"))
+        thumbnail_url = thumbnails["medium"]["url"].get<std::string>();
+    else if (thumbnails.contains("default"))
+        thumbnail_url = thumbnails["default"]["url"].get<std::string>();
+    return thumbnail_url;
 }
