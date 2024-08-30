@@ -34,38 +34,36 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
     {
         // create queue obj
         music_queue::getQueue(event.command.guild_id, true);
-        std::string search_term = std::get<std::string>(event.get_parameter("link"));
-        event.reply("Searching for " + search_term,
-        [event, search_term](const dpp::confirmation_callback_t& callback){
-            std::string link = search_term;
-            // user sent a link
-            if (search_term.substr(0, 8) == "https://")
+        event.reply(dpp::message("Getting Player ready..."),
+        [event](const dpp::confirmation_callback_t& callback){
+            music_queue* queue = music_queue::getQueue(event.command.guild_id);
+            if (!callback.is_error() && queue)
             {
-                size_t slash = search_term.find('/', 8);
-                std::string platform = link.substr(8, slash - 8);
-                // music
-                if (platform == "www.youtube.com" || platform == "youtube.com" || platform == "youtu.be" || platform == "music.youtube.com")
+                dpp::snowflake cur_id = queue->getPlayerID();
+                dpp::message* cur_msg = music_queue::getMessage(cur_id);
+                // invoked from diff channel than original, remove it
+                if (cur_msg && cur_msg->channel_id != event.command.channel_id)
                 {
-                    youtube::parseURL(event, search_term.substr(slash));
+                    music_queue::removeMessage(cur_id);
+                    cur_msg = nullptr;
                 }
-                // spotify
-                else if (platform == "open.spotify.com")
-                {
-                    spotify::parseURL(event, search_term.substr(slash));
-                }
-                // soundcloud
-                else if (platform == "soundcloud.com")
-                {
-                    event.edit_original_response(dpp::message("Soundcloud support coming soon"));
-                }
-                else
-                    event.edit_original_response(dpp::message("The platform, " + platform + ", is not currently supported"));
+                // got deleted or dne. cache msg
+                if (!cur_msg)
+                    event.get_original_response([event](const dpp::confirmation_callback_t& callback){
+                        music_queue* queue = music_queue::getQueue(event.command.guild_id);
+                        if (!callback.is_error() && queue)
+                        {
+                            // cache msg and set id
+                            dpp::message new_msg = std::get<dpp::message>(callback.value);
+                            music_queue::cacheMessage(new_msg);
+                            queue->setPlayerID(new_msg.id);
+                        }
+                    });
+                // continue to queue
+                parseURL(event);
             }
-            // user sent a query. Search music
             else
-            {
-                youtube::ytsearch(event, search_term, queue);
-            }
+                std::cout << "this better not print\n";
         });
     }
 }
@@ -96,18 +94,13 @@ void music::pause(dpp::cluster& bot, const dpp::slashcommand_t& event)
 
 void music::stop(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
-    auto voiceconn = event.from->get_voice(event.command.guild_id);
-    if (voiceconn)
+    music_queue* queue = music_queue::getQueue(event.command.guild_id);
+    if (queue)
     {
-        auto voice_client = voiceconn->voiceclient;
-        if (voice_client->is_playing())
+        if (!queue->empty())
         {
             music_queue* queue = music_queue::getQueue(event.command.guild_id);
             queue->clear_queue();
-            event.reply("Clearing queue...");
-            std::this_thread::sleep_for(std::chrono::seconds(2));
-            voice_client->stop_audio();
-
             event.edit_original_response(dpp::message("Songs stopped and removed from queue my lord"));
         }
         else
@@ -145,7 +138,7 @@ void music::queue(const dpp::slashcommand_t &event)
         if (queue && !queue->empty()) // there is actually music playing
         {
             // send embed
-            event.reply(queue->get_queue_embed());
+            event.reply(queue->get_embed());
         }
         else
             event.reply("No songs in queue");
@@ -237,7 +230,7 @@ void music::handle_button_press(const dpp::button_click_t &event)
             {
                 // refresh
                 if (under == std::string::npos)
-                    msg = queue->get_queue_embed();
+                    msg = queue->get_embed();
                 // prev/next
                 else
                 {
@@ -260,7 +253,7 @@ void music::handle_button_press(const dpp::button_click_t &event)
             if (queue)
             {
                 queue->shuffle();
-                event.reply(dpp::ir_update_message, queue->get_queue_embed());
+                event.reply(dpp::ir_update_message, queue->get_embed());
             }   
             else
                 event.reply(dpp::ir_update_message, dpp::message("No queue"));
@@ -269,7 +262,39 @@ void music::handle_button_press(const dpp::button_click_t &event)
     t.detach();
 }
 
-void music::shuffle(const dpp::slashcommand_t &event)
+void music::parseURL(const dpp::slashcommand_t& event)
+{
+    std::string search_term = std::get<std::string>(event.get_parameter("link"));
+    if (search_term.substr(0, 8) == "https://")
+    {
+        size_t slash = search_term.find('/', 8);
+        std::string platform = search_term.substr(8, slash - 8);
+        // music
+        if (platform == "www.youtube.com" || platform == "youtube.com" || platform == "youtu.be" || platform == "music.youtube.com")
+        {
+            youtube::parseURL(event, search_term.substr(slash));
+        }
+        // spotify
+        else if (platform == "open.spotify.com")
+        {
+            spotify::parseURL(event, search_term.substr(slash));
+        }
+        // soundcloud
+        else if (platform == "soundcloud.com")
+        {
+            event.edit_original_response(dpp::message("Soundcloud support coming soon"));
+        }
+        else
+            event.edit_original_response(dpp::message("The platform, " + platform + ", is not currently supported"));
+    }
+    // user sent a query. Search music
+    else
+    {
+        youtube::ytsearch(event, search_term);
+    }
+}
+
+void music::shuffle(const dpp::slashcommand_t& event)
 {
     auto voice = event.from->get_voice(event.command.guild_id);
     if (voice)
