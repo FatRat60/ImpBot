@@ -6,6 +6,7 @@
 
 std::unordered_map<dpp::snowflake, music_queue*> music_queue::queue_map;
 std::mutex music_queue::map_mutex;
+dpp::cache<dpp::message> music_queue::player_embed_cache;
 
 music_queue* music_queue::getQueue(dpp::snowflake guild_id, bool create)
 {
@@ -39,8 +40,24 @@ void music_queue::removeQueue(dpp::snowflake guild_id)
         music_queue* queue_to_del = res->second;
         res->second->clear_queue();
         queue_map.erase(res); // delete from map
+        // remove cache msg
+        removeMessage(queue_to_del->getPlayerID());
         delete queue_to_del; // delete music_queue
     }
+}
+
+void music_queue::cacheMessage(dpp::message &msg)
+{
+    dpp::message* cached_msg = new dpp::message();
+    *cached_msg = msg;
+    player_embed_cache.store(cached_msg);
+}
+
+void music_queue::removeMessage(dpp::snowflake msg_id)
+{
+    dpp::message* msg = player_embed_cache.find(msg_id);
+    if (msg)
+        player_embed_cache.remove(msg);
 }
 
 void music_queue::setVoiceClient(dpp::discord_voice_client *voice)
@@ -160,6 +177,7 @@ void music_queue::clear_queue()
     std::lock_guard<std::mutex> guard(queue_mutex);
     stopLivestream = true; // terminate livestream
     queue.clear();
+    vc->stop_audio();
 }
 
 bool music_queue::remove_from_queue(size_t start, size_t end)
@@ -185,10 +203,54 @@ bool music_queue::remove_from_queue(size_t start, size_t end)
     return false;
 }
 
-dpp::message music_queue::get_queue_embed()
+dpp::message music_queue::get_embed()
 {
     std::lock_guard<std::mutex> guard(queue_mutex);
 
+    dpp::message embed;
+    switch (curr_page)
+    {
+    case page_type::queue:
+        embed = get_queue_embed();
+        break;
+
+    case page_type::history:
+        embed = get_history_embed();
+        break;
+    
+    case page_type::playback_control:
+    default:
+        embed = get_playback_embed();
+        break;
+    }
+
+    // add page switchingbuttons now
+    embed.add_component(
+        dpp::component().add_component(
+            dpp::component()
+                .set_label("Player")
+                .set_id("play")
+                .set_disabled(curr_page == page_type::playback_control)
+        )
+        .add_component(
+            dpp::component()
+                .set_label("Queue")
+                .set_id("queue")
+                .set_disabled(curr_page == page_type::queue)
+        )
+        .add_component(
+            dpp::component()
+                .set_label("History")
+                .set_id("history")
+                .set_disabled(curr_page == page_type::history)
+        )
+    );
+
+    return embed;
+}
+
+dpp::message music_queue::get_queue_embed()
+{
     size_t size = queue.size();
     size_t start = (MAX_EMBED_VALUES * page) + 1;
     size_t end = MAX_EMBED_VALUES * (page+1);
@@ -232,7 +294,6 @@ dpp::message music_queue::get_queue_embed()
         q_embed.add_field("Empty!", "");
 
     dpp::message msg = dpp::message(q_embed);
-    dpp::component comp = dpp::component().set_type(dpp::cot_action_row);
 
     // return msg w/ components
     return msg.add_component(
@@ -251,12 +312,73 @@ dpp::message music_queue::get_queue_embed()
         .add_component(
             dpp::component()
                 .set_emoji(dpp::unicode_emoji::arrows_counterclockwise)
-                .set_id("queue")
+                .set_id("refresh")
         )
         .add_component(
             dpp::component()
                 .set_emoji(dpp::unicode_emoji::arrows_clockwise)
                 .set_id("shuffle")
+        )
+    );
+}
+
+dpp::message music_queue::get_history_embed()
+{
+    return dpp::message();
+}
+
+dpp::message music_queue::get_playback_embed()
+{
+    song song;
+    bool noSongs = true;
+    if (!queue.empty())
+    {
+        song = queue.front();
+        noSongs = false;
+    }
+    else
+    {
+        song.thumbnail = DEFAULT_THUMBNAIL;
+        song.title = "No songs playing...";
+        song.duration = "0:00";
+    }
+
+    dpp::embed embed = dpp::embed()
+        .set_color(dpp::colors::pink_rose)
+        .set_title("Music Player")
+        .set_image(song.thumbnail)
+        .add_field(song.title, "[" + song.duration + "]");
+
+    dpp::message msg(embed);
+
+    return msg.add_component(
+        dpp::component().add_component(
+            // rewind btn jus for show
+            dpp::component()
+                .set_emoji(dpp::unicode_emoji::rewind)
+                .set_id("rewind")
+                .set_disabled(true)
+        )
+        .add_component(
+            // play/pause btn
+            dpp::component()
+                .set_emoji(dpp::unicode_emoji::play_pause)
+                .set_id("pause")
+                .set_disabled(noSongs)
+        )
+        .add_component(
+            // stop btn
+            dpp::component()
+                .set_emoji(dpp::unicode_emoji::stop_button)
+                .set_id("stop")
+                .set_disabled(noSongs)
+        )
+        .add_component(
+            // skip btn
+            dpp::component()
+                .set_emoji(dpp::unicode_emoji::fast_forward)
+                .set_id("skip")
+                .set_disabled(noSongs)
         )
     );
 }
