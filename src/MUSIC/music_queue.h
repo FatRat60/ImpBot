@@ -42,7 +42,7 @@ class music_queue
         static dpp::message* getMessage(dpp::snowflake msg_id){ return player_embed_cache.find(msg_id); }
         static void removeMessage(dpp::snowflake msg_id);
         static void updateMessage(std::pair<dpp::cluster&, dpp::snowflake> event);
-        music_queue() { stopLivestream = false; page = 0; vc = nullptr; curr_page = playback_control; player_id = 0; }
+        music_queue() { stopLivestream = false; page_number = 0; vc = nullptr; page = playback_control; player_id = 0; }
         void setPlayerID(dpp::snowflake new_id) { player_id = new_id; }
         dpp::snowflake getPlayerID(){ return player_id; }
         void setVoiceClient(dpp::discord_voice_client* voice);
@@ -53,8 +53,10 @@ class music_queue
         bool remove_from_queue(size_t start, size_t end);
         dpp::message get_embed();
         bool empty() { return queue.empty(); }
-        size_t getPage() { return page; }
-        dpp::message new_page(size_t num) {page = num; return get_queue_embed(); }
+        void changePageNumber(int inc_value);
+        void setPage(page_type new_page){ page = new_page; }
+        page_type getPage(){ return page; }
+        void pause(){vc->pause_audio(!vc->is_paused());}
         void shuffle();
     private:
         static std::unordered_map<dpp::snowflake, music_queue*> queue_map;
@@ -65,8 +67,8 @@ class music_queue
         std::condition_variable vc_ready;
         std::deque<song> queue;
         bool stopLivestream;
-        page_type curr_page;
-        size_t page;
+        page_type page;
+        size_t page_number;
         dpp::snowflake player_id;
         bool handle_download(std::string url);
         bool preload(std::string url);

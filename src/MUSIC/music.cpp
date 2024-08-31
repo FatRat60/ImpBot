@@ -34,7 +34,7 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
     {
         // create queue obj
         music_queue::getQueue(event.command.guild_id, true);
-        event.thinking(false, [event](const dpp::confirmation_callback_t& callback){
+        event.reply("Getting player embed...", [event](const dpp::confirmation_callback_t& callback){
             music_queue* queue = music_queue::getQueue(event.command.guild_id);
             if (!callback.is_error() && queue)
             {
@@ -220,45 +220,46 @@ void music::handle_voice_leave(const dpp::slashcommand_t& event)
 void music::handle_button_press(const dpp::button_click_t &event)
 {
     std::thread t([event](){
-        size_t under = event.custom_id.find('_');
-        std::string cmd = event.custom_id.substr(0, under);
-        // button press to update queue
-        if (cmd == "queue")
+        music_queue* queue = music_queue::getQueue(event.command.guild_id);
+        if (queue)
         {
-            dpp::message msg;
-            music_queue* queue = music_queue::getQueue(event.command.guild_id);
-            if (queue)
-            {
-                // refresh
-                if (under == std::string::npos)
-                    msg = queue->get_embed();
-                // prev/next
-                else
-                {
-                    size_t page = queue->getPage();
-                    if (event.custom_id.substr(under+1) == "next")
-                        page++;
-                    else
-                        page--;
-                    msg = queue->new_page(page);
-                }
+            // parse commands
+            bool doEdit = true;
+            if (event.custom_id == "play")
+                queue->setPage(page_type::playback_control);
+            else if (event.custom_id == "queue")
+                queue->setPage(page_type::queue);
+            else if (event.custom_id == "history")
+                queue->setPage(page_type::history);
+            else if (event.custom_id == "add"){}
+                // TODO fire the modal
+            else if (event.custom_id == "skip")
+                doEdit = queue->skip() && queue->getPage() != page_type::history;
+            else if (event.custom_id == "next")
+                queue->changePageNumber(1);
+            else if (event.custom_id == "prev")
+                queue->changePageNumber(-1);
+            else if (event.custom_id == "pause"){
+                queue->pause();
+                doEdit = false;
+            }
+            else if (event.custom_id == "shuffle"){
+                queue->shuffle();
+                doEdit = queue->getPage() == page_type::queue;
+            }
+            else if (event.custom_id == "stop"){
+                queue->clear_queue();
+                doEdit = queue->getPage() != page_type::history;
             }
             else
-                msg = dpp::message("Why would you click this knowing there's no music playing? Dumbass...");
-
-            event.reply(dpp::ir_update_message, msg);     
-        }
-        else if (cmd == "shuffle")
-        {
-            music_queue* queue = music_queue::getQueue(event.command.guild_id);
-            if (queue)
-            {
-                queue->shuffle();
+                doEdit = false;
+            if (doEdit)
                 event.reply(dpp::ir_update_message, queue->get_embed());
-            }   
             else
-                event.reply(dpp::ir_update_message, dpp::message("No queue"));
+                event.reply();
         }
+        else
+            event.reply(dpp::ir_update_message, dpp::message("Why would you click this knowing there's no music playing? Dumbass..."));
     });
     t.detach();
 }

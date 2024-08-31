@@ -236,7 +236,7 @@ dpp::message music_queue::get_embed()
     std::lock_guard<std::mutex> guard(queue_mutex);
 
     dpp::message embed;
-    switch (curr_page)
+    switch (page)
     {
     case page_type::queue:
         embed = get_queue_embed();
@@ -258,34 +258,49 @@ dpp::message music_queue::get_embed()
             dpp::component()
                 .set_label("Player")
                 .set_id("play")
-                .set_disabled(curr_page == page_type::playback_control)
+                .set_disabled(page == page_type::playback_control)
         )
         .add_component(
             dpp::component()
                 .set_label("Queue")
                 .set_id("queue")
-                .set_disabled(curr_page == page_type::queue)
+                .set_disabled(page == page_type::queue)
         )
         .add_component(
             dpp::component()
                 .set_label("History")
                 .set_id("history")
-                .set_disabled(curr_page == page_type::history)
+                .set_disabled(page == page_type::history)
+        )
+        .add_component(
+            dpp::component()
+                .set_label("Add Music")
+                .set_id("add")
         )
     );
 
     return embed;
 }
 
+void music_queue::changePageNumber(int inc_value)
+{
+    std::lock_guard<std::mutex> guard(queue_mutex);
+
+    if (inc_value > 0)
+        page_number++;
+    else
+        page_number--;
+}
+
 dpp::message music_queue::get_queue_embed()
 {
     size_t size = queue.size();
-    size_t start = (MAX_EMBED_VALUES * page) + 1;
-    size_t end = MAX_EMBED_VALUES * (page+1);
+    size_t start = (MAX_EMBED_VALUES * page_number) + 1;
+    size_t end = MAX_EMBED_VALUES * (page_number+1);
     // validate page
     if (size < start)
     {
-        page = 0;
+        page_number = 0;
         start = 1;
         end = MAX_EMBED_VALUES;
     }
@@ -328,19 +343,14 @@ dpp::message music_queue::get_queue_embed()
         dpp::component().add_component(
             dpp::component()
                 .set_emoji(dpp::unicode_emoji::left_arrow)
-                .set_id("queue_prev")
+                .set_id("prev")
                 .set_disabled(start < MAX_EMBED_VALUES)
         )
         .add_component(
             dpp::component()
                 .set_emoji(dpp::unicode_emoji::right_arrow)
-                .set_id("queue_next") // store current page number in id
+                .set_id("next") // store current page number in id
                 .set_disabled(size < end)
-        )
-        .add_component(
-            dpp::component()
-                .set_emoji(dpp::unicode_emoji::arrows_counterclockwise)
-                .set_id("refresh")
         )
         .add_component(
             dpp::component()
