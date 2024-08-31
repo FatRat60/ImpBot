@@ -5,12 +5,12 @@
 #include <chrono>
 
 std::unordered_map<dpp::snowflake, music_queue*> music_queue::queue_map;
-std::mutex music_queue::map_mutex;
+std::shared_mutex music_queue::map_mutex;
 dpp::cache<dpp::message> music_queue::player_embed_cache;
 
 music_queue* music_queue::getQueue(dpp::snowflake guild_id, bool create)
 {
-    std::lock_guard<std::mutex> guard(map_mutex);
+    std::shared_lock<std::shared_mutex> guard(map_mutex);
 
     auto res = queue_map.find(guild_id);
     music_queue* found_queue = nullptr;
@@ -18,6 +18,10 @@ music_queue* music_queue::getQueue(dpp::snowflake guild_id, bool create)
     {
         if (create)
         {
+            // unlock shared
+            guard.unlock();
+            // obtain unshared write mutex
+            std::unique_lock<std::shared_mutex> guard2(map_mutex);
             found_queue = new music_queue();
             queue_map.insert({guild_id, found_queue});
         }
@@ -31,12 +35,14 @@ music_queue* music_queue::getQueue(dpp::snowflake guild_id, bool create)
 void music_queue::removeQueue(dpp::snowflake guild_id)
 {
     // capture the queue map mutex first
-    std::lock_guard<std::mutex> map_guard(map_mutex);
+    std::shared_lock<std::shared_mutex> shared_map_guard(map_mutex);
     // retrieve music_queue from map if exists
     auto res = queue_map.find(guild_id);
     // music_queue exists
     if (res != queue_map.end())
     {
+        shared_map_guard.unlock();
+        std::unique_lock<std::shared_mutex> write_map_guard(map_mutex);
         music_queue* queue_to_del = res->second;
         res->second->clear_queue();
         queue_map.erase(res); // delete from map
@@ -58,6 +64,26 @@ void music_queue::removeMessage(dpp::snowflake msg_id)
     dpp::message* msg = player_embed_cache.find(msg_id);
     if (msg)
         player_embed_cache.remove(msg);
+}
+
+void music_queue::updateMessage(std::pair<dpp::cluster&, dpp::snowflake> event)
+{
+    music_queue* queue = getQueue(event.second);
+    if (queue)
+    {
+        dpp::message* msg = player_embed_cache.find(queue->getPlayerID());
+        if (msg)
+        {
+            std::cout << "Updating embed\n";
+            // get new embed
+            dpp::message new_msg = queue->get_embed();
+            // copy components and embed over
+            msg->set_content("");
+            msg->embeds = new_msg.embeds;
+            msg->components = new_msg.components;
+            event.first.message_edit(*msg);
+        }
+    }
 }
 
 void music_queue::setVoiceClient(dpp::discord_voice_client *voice)
@@ -98,7 +124,7 @@ bool music_queue::enqueue(song &song_to_add)
         t.detach();
     }
     std::cout << "Queued song\n";
-    return true;
+    return queue.size() == 1;
 }
 
 /*Will be called when streamed song is finished. Pops top of queue
@@ -156,7 +182,7 @@ bool music_queue::go_next()
     return false;
 }
 
-void music_queue::skip()
+bool music_queue::skip()
 {
     if (!queue.empty() && queue.front().type == livestream)
     {
@@ -164,11 +190,13 @@ void music_queue::skip()
         // need to signal flag to end livestream. Afterwhich a marker will get added and trigger
         stopLivestream = true;
         vc->skip_to_next_marker();
+        return false;
     }
     else // jus skipping a song
     {
         vc->skip_to_next_marker();
         go_next();
+        return true;
     }
 }
 

@@ -41,13 +41,14 @@ class music_queue
         static void cacheMessage(dpp::message& msg);
         static dpp::message* getMessage(dpp::snowflake msg_id){ return player_embed_cache.find(msg_id); }
         static void removeMessage(dpp::snowflake msg_id);
+        static void updateMessage(std::pair<dpp::cluster&, dpp::snowflake> event);
         music_queue() { stopLivestream = false; page = 0; vc = nullptr; curr_page = playback_control; player_id = 0; }
         void setPlayerID(dpp::snowflake new_id) { player_id = new_id; }
         dpp::snowflake getPlayerID(){ return player_id; }
         void setVoiceClient(dpp::discord_voice_client* voice);
         bool enqueue(song& song_to_add);
         bool go_next();
-        void skip();
+        bool skip();
         void clear_queue();
         bool remove_from_queue(size_t start, size_t end);
         dpp::message get_embed();
@@ -57,7 +58,7 @@ class music_queue
         void shuffle();
     private:
         static std::unordered_map<dpp::snowflake, music_queue*> queue_map;
-        static std::mutex map_mutex;
+        static std::shared_mutex map_mutex;
         static dpp::cache<dpp::message> player_embed_cache;
         dpp::discord_voice_client* vc;
         std::mutex queue_mutex;
