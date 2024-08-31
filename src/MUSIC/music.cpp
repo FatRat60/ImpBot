@@ -34,33 +34,32 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
     {
         // create queue obj
         music_queue::getQueue(event.command.guild_id, true);
-        event.reply(dpp::message("Getting Player ready..."),
-        [event](const dpp::confirmation_callback_t& callback){
+        event.thinking(false, [event](const dpp::confirmation_callback_t& callback){
             music_queue* queue = music_queue::getQueue(event.command.guild_id);
             if (!callback.is_error() && queue)
             {
-                dpp::snowflake cur_id = queue->getPlayerID();
-                dpp::message* cur_msg = music_queue::getMessage(cur_id);
-                // invoked from diff channel than original, remove it
-                if (cur_msg && cur_msg->channel_id != event.command.channel_id)
+                dpp::message* cur_msg = music_queue::getMessage(queue->getPlayerID());
+                // invoked play again, remove old one if exists and cache new one
+                if (cur_msg)
                 {
-                    music_queue::removeMessage(cur_id);
+                    music_queue::removeMessage(queue->getPlayerID());
+                    event.from->creator->message_delete(cur_msg->id, cur_msg->channel_id);
                     cur_msg = nullptr;
                 }
-                // got deleted or dne. cache msg
-                if (!cur_msg)
-                    event.get_original_response([event](const dpp::confirmation_callback_t& callback){
-                        music_queue* queue = music_queue::getQueue(event.command.guild_id);
-                        if (!callback.is_error() && queue)
-                        {
-                            // cache msg and set id
-                            dpp::message new_msg = std::get<dpp::message>(callback.value);
-                            music_queue::cacheMessage(new_msg);
-                            queue->setPlayerID(new_msg.id);
-                        }
-                    });
+                // cache new one
+                event.get_original_response([event](const dpp::confirmation_callback_t& callback){
+                    music_queue* queue = music_queue::getQueue(event.command.guild_id);
+                    if (!callback.is_error() && queue)
+                    {
+                        // cache msg and set id
+                        dpp::message new_msg = std::get<dpp::message>(callback.value);
+                        music_queue::cacheMessage(new_msg);
+                        queue->setPlayerID(new_msg.id);
+                    }
+                });
                 // continue to queue
-                parseURL(event);
+                std::pair<dpp::cluster&, dpp::snowflake> pair(*event.from->creator, event.command.guild_id);
+                parseURL(pair, std::get<std::string>(event.get_parameter("link")));
             }
             else
                 std::cout << "this better not print\n";
@@ -118,7 +117,8 @@ void music::skip(dpp::cluster& bot, const dpp::slashcommand_t& event)
         if (!queue->empty())
         {
         event.reply("Skipped");
-        queue->skip();
+        if (queue->skip())
+            music_queue::updateMessage(std::pair<dpp::cluster&, dpp::snowflake>(*event.from->creator, event.command.guild_id));
         }
         else
         {
@@ -205,6 +205,7 @@ void music::handle_marker(const dpp::voice_track_marker_t &marker)
             if (queue)
             {
                 queue->go_next();
+                music_queue::updateMessage(std::pair<dpp::cluster&, dpp::snowflake>(*marker.voice_client->creator, marker.voice_client->server_id));
             }
         });
         t.detach();
@@ -262,9 +263,8 @@ void music::handle_button_press(const dpp::button_click_t &event)
     t.detach();
 }
 
-void music::parseURL(const dpp::slashcommand_t& event)
+void music::parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string search_term)
 {
-    std::string search_term = std::get<std::string>(event.get_parameter("link"));
     if (search_term.substr(0, 8) == "https://")
     {
         size_t slash = search_term.find('/', 8);
@@ -282,10 +282,10 @@ void music::parseURL(const dpp::slashcommand_t& event)
         // soundcloud
         else if (platform == "soundcloud.com")
         {
-            event.edit_original_response(dpp::message("Soundcloud support coming soon"));
+            //event.edit_original_response(dpp::message("Soundcloud support coming soon"));
         }
-        else
-            event.edit_original_response(dpp::message("The platform, " + platform + ", is not currently supported"));
+        //else
+            //event.edit_original_response(dpp::message("The platform, " + platform + ", is not currently supported"));
     }
     // user sent a query. Search music
     else

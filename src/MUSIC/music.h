@@ -18,7 +18,7 @@ class music
         static void handle_voice_leave(const dpp::slashcommand_t& event);
         static void handle_button_press(const dpp::button_click_t& event);
     private:
-        static void parseURL(const dpp::slashcommand_t& event);
+        static void parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string search_term);
 };
 
 
