@@ -231,8 +231,21 @@ void music::handle_button_press(const dpp::button_click_t &event)
                 queue->setPage(page_type::queue);
             else if (event.custom_id == "history")
                 queue->setPage(page_type::history);
-            else if (event.custom_id == "add"){}
-                // TODO fire the modal
+            else if (event.custom_id == "add"){
+                dpp::interaction_modal_response modal("add", "Please enter Youtube or Spotify link below");
+                modal.add_component(
+                    dpp::component()
+                        .set_label("Please enter Youtube or Spotify link below")
+                        .set_id("link")
+                        .set_type(dpp::cot_text)
+                        .set_placeholder("Your link here")
+                        .set_min_length(1)
+                        .set_max_length(100)
+                        .set_text_style(dpp::text_short)
+                );
+                event.dialog(modal);
+                return;
+            }
             else if (event.custom_id == "skip")
                 doEdit = queue->skip() && queue->getPage() != page_type::history;
             else if (event.custom_id == "next")
@@ -262,6 +275,19 @@ void music::handle_button_press(const dpp::button_click_t &event)
             event.reply(dpp::ir_update_message, dpp::message("Why would you click this knowing there's no music playing? Dumbass..."));
     });
     t.detach();
+}
+
+void music::handle_form(dpp::cluster& bot, const dpp::form_submit_t& event)
+{
+    if (event.custom_id == "add")
+    {
+        std::thread t([&bot, event]{
+            std::string link = std::get<std::string>(event.components[0].components[0].value);
+            parseURL(std::pair<dpp::cluster&, dpp::snowflake>(bot, event.command.guild_id), link);
+        });
+        t.detach();
+    }
+    event.reply();
 }
 
 void music::parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string search_term)

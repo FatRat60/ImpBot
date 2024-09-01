@@ -109,15 +109,10 @@ void youtube::handleVideo(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::j
         music_queue* queue = music_queue::getQueue(event.second);
         if (queue)
         {
-            bool doUpdate = queue->enqueue(new_song);
+            bool doUpdate = queue->enqueue(new_song) && queue->getPage() != page_type::history;
             if (doReply)
             {
-                /* TODO same as above
-                if (res)
-                    event.edit_original_response(queue->get_embed());
-                else
-                    event.edit_original_response(dpp::message("Error encountered when trying to queue the song"));
-                    */
+                
             }
             if (doUpdate)
                 music_queue::updateMessage(event);
