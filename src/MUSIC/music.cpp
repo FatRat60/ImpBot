@@ -59,7 +59,7 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                 });
                 // continue to queue
                 std::pair<dpp::cluster&, dpp::snowflake> pair(*event.from->creator, event.command.guild_id);
-                parseURL(pair, std::get<std::string>(event.get_parameter("link")));
+                parseURL(pair, std::get<std::string>(event.get_parameter("link")), event.command.get_issuing_user().get_mention());
             }
             else
                 std::cout << "this better not print\n";
@@ -283,14 +283,14 @@ void music::handle_form(dpp::cluster& bot, const dpp::form_submit_t& event)
     {
         std::thread t([&bot, event]{
             std::string link = std::get<std::string>(event.components[0].components[0].value);
-            parseURL(std::pair<dpp::cluster&, dpp::snowflake>(bot, event.command.guild_id), link);
+            parseURL(std::pair<dpp::cluster&, dpp::snowflake>(bot, event.command.guild_id), link, event.command.get_issuing_user().get_mention());
         });
         t.detach();
     }
     event.reply();
 }
 
-void music::parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string search_term)
+void music::parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string search_term, std::string history_string)
 {
     if (search_term.substr(0, 8) == "https://")
     {
@@ -299,25 +299,28 @@ void music::parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string
         // music
         if (platform == "www.youtube.com" || platform == "youtube.com" || platform == "youtu.be" || platform == "music.youtube.com")
         {
-            youtube::parseURL(event, search_term.substr(slash));
+            youtube::parseURL(event, search_term.substr(slash), history_string);
         }
         // spotify
         else if (platform == "open.spotify.com")
         {
-            spotify::parseURL(event, search_term.substr(slash));
+            spotify::parseURL(event, search_term.substr(slash), history_string);
         }
         // soundcloud
-        else if (platform == "soundcloud.com")
+        else
         {
-            //event.edit_original_response(dpp::message("Soundcloud support coming soon"));
+            music_queue* queue = music_queue::getQueue(event.second);
+            if (queue)
+                queue->addHistory(history_string + " provided a link that isn't supported...");
         }
-        //else
-            //event.edit_original_response(dpp::message("The platform, " + platform + ", is not currently supported"));
     }
     // user sent a query. Search music
     else
     {
         youtube::ytsearch(event, search_term);
+        music_queue* queue = music_queue::getQueue(event.second);
+        if (queue)
+            queue->addHistory(history_string + " searched for " + search_term);
     }
 }
 
