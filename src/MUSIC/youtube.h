@@ -14,15 +14,15 @@ class youtube
 {
     public:
         static void setAPIkey(std::string API_KEY) { YOUTUBE_API_KEY = API_KEY;}
-        static void parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string link);
-        static void ytsearch(std::pair<dpp::cluster&, dpp::snowflake> event, std::string query, bool doReply = true);
+        static void parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string link, std::string history_entry = "");
+        static void ytsearch(std::pair<dpp::cluster&, dpp::snowflake> event, std::string query, std::string history_entry = "");
     private:
         static std::string YOUTUBE_API_KEY;
         static std::mutex token_mutex;
-        static void makeRequest(std::pair<dpp::cluster&, dpp::snowflake> event, std::string endpoint, bool doReply = true, size_t songs = 0);
-        static void handleReply(std::pair<dpp::cluster&, dpp::snowflake> event, const dpp::http_request_completion_t& reply, bool doReply, size_t songs);
-        static void handleVideo(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& video, bool doReply);
-        static void handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& playlist, bool doReply, size_t songs = 0);
+        static void makeRequest(std::pair<dpp::cluster&, dpp::snowflake> event, std::string endpoint, std::string history_entry = "", size_t songs = 0);
+        static void handleReply(std::pair<dpp::cluster&, dpp::snowflake> event, const dpp::http_request_completion_t& reply, std::string history_entry, size_t songs);
+        static void handleVideo(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& video, std::string history_entry);
+        static void handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& playlist, std::string history_entry, size_t songs = 0);
         static song createSong(dpp::json& video);
         static std::string convertDuration(std::string old_duration);
         static std::string getThumbnail(dpp::json& thumbnails);

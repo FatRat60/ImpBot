@@ -11,21 +11,21 @@
 std::string youtube::YOUTUBE_API_KEY;
 std::mutex youtube::token_mutex;
 
-void youtube::makeRequest(std::pair<dpp::cluster&, dpp::snowflake> event, std::string endpoint, bool doReply, size_t songs)
+void youtube::makeRequest(std::pair<dpp::cluster&, dpp::snowflake> event, std::string endpoint, std::string history_entry, size_t songs)
 {
     std::lock_guard<std::mutex> guard(token_mutex);
     // call api if key exists
     if (!YOUTUBE_API_KEY.empty())
         event.first.request(
             endpoint + YOUTUBE_API_KEY, dpp::m_get,
-            [event, songs, doReply](const dpp::http_request_completion_t& reply){
-                handleReply(event, reply, doReply, songs);
+            [event, songs, history_entry](const dpp::http_request_completion_t& reply){
+                handleReply(event, reply, history_entry, songs);
             }
         );
     else // no api key, rate-limited. use yt-dlp
     {
         // spawn thread so mutex does not stay locked
-        std::thread t([event, endpoint, doReply](){
+        std::thread t([event, endpoint, history_entry](){
             size_t slash = endpoint.rfind('/');
             size_t mark = endpoint.find('?', slash);
             std::string type = endpoint.substr(slash, mark-slash);
@@ -33,31 +33,36 @@ void youtube::makeRequest(std::pair<dpp::cluster&, dpp::snowflake> event, std::s
             size_t equals = endpoint.rfind('=', aaron);
             dpp::json item;
             item["id"] = endpoint.substr(equals+1, (aaron-equals)-1);
-            if (type == "/playlistItems")
+            if (type == "/playlistItems" || type == "/playlists")
             {
-                handlePlaylist(event, item, doReply);
+                handlePlaylist(event, item, history_entry);
             }
             else
             {
-                handleVideo(event, item, doReply);
+                handleVideo(event, item, history_entry);
             }
         });
         t.detach();
     }
 }
 
-void youtube::handleReply(std::pair<dpp::cluster&, dpp::snowflake> event, const dpp::http_request_completion_t& reply, bool doReply, size_t songs)
+void youtube::handleReply(std::pair<dpp::cluster&, dpp::snowflake> event, const dpp::http_request_completion_t& reply, std::string history_entry, size_t songs)
 {
     // we are bing. parse body and either call handleVideo or handlePlaylist
     if (reply.status == 200)
     {
         dpp::json json = dpp::json::parse(reply.body);
 
-        std::string response_type = json["kind"];
+        std::string response_type = json["kind"].get<std::string>();
         if (response_type == "youtube#videoListResponse")
-            handleVideo(event, json["items"][0], doReply);
+            handleVideo(event, json["items"][0], history_entry);
+        else if (response_type == "youtube#playlistListResponse")
+            makeRequest(event, 
+                std::string(YOUTUBE_ENDPOINT) + "/playlistItems?part=snippet&maxResults=50&playlistId=" + json["items"][0]["id"].get<std::string>()
+                + "&key=", history_entry + " queued from " + json["items"][0]["snippet"]["title"].get<std::string>()
+            );
         else
-            handlePlaylist(event, json, doReply, songs);
+            handlePlaylist(event, json, history_entry, songs);
     }
     // ruh roh we got ratelimited. Set api key to "" and set timer for midnight which will reinstate api key
     else if (reply.status == 429)
@@ -66,13 +71,9 @@ void youtube::handleReply(std::pair<dpp::cluster&, dpp::snowflake> event, const 
         YOUTUBE_API_KEY = "";
         // TODO: set timer to reinstate key
     }
-    /* TODO add logic to edit message found in cache
-    else if (doReply)
-        event.edit_original_response(dpp::message("There was an error making the request to youtube"));
-        */
 }
 
-void youtube::handleVideo(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& video, bool doReply)
+void youtube::handleVideo(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& video, std::string history_entry)
 {
     // use yt-dlp to get json
     if (!video.contains("snippet"))
@@ -110,9 +111,9 @@ void youtube::handleVideo(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::j
         if (queue)
         {
             bool doUpdate = queue->enqueue(new_song) && queue->getPage() != page_type::history;
-            if (doReply)
+            if (!history_entry.empty())
             {
-                
+                queue->addHistory(history_entry + " queued " + new_song.title + ". (YouTube)");
             }
             if (doUpdate)
                 music_queue::updateMessage(event);
@@ -120,7 +121,7 @@ void youtube::handleVideo(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::j
     }
 }
 
-void youtube::handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& playlist, bool doReply, size_t songs)
+void youtube::handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& playlist, std::string history_entry, size_t songs)
 {
     // json from youtube api
     if (playlist.contains("items"))
@@ -131,7 +132,7 @@ void youtube::handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp
             songs++;
             makeRequest(event, 
             std::string(YOUTUBE_ENDPOINT) + "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") 
-            + "&id=" + video["snippet"]["resourceId"]["videoId"].get<std::string>() + "&key=", false);
+            + "&id=" + video["snippet"]["resourceId"]["videoId"].get<std::string>() + "&key=");
         }
 
         // next page of songs to add
@@ -141,13 +142,14 @@ void youtube::handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp
                 std::string(YOUTUBE_ENDPOINT) + "/playlistItems?part=snippet&playlistId=" 
                 + playlist["items"][0]["snippet"]["playlistId"].get<std::string>()
                 + "&maxResults=50&pageToken=" + playlist["nextPageToken"].get<std::string>() + "&key=",
-                doReply, songs);
+                history_entry, songs);
         }
-        /* TODO same as above
-        else if (doReply)
-            event.edit_original_response(dpp::message("Added " + std::to_string(songs) + " songs from "
-                + std::string(YOUTUBE_LIST_URL) + playlist["items"][0]["snippet"]["playlistId"].get<std::string>()));
-                */
+        else if (!history_entry.empty())
+        {
+            music_queue* queue = music_queue::getQueue(event.second);
+            if (queue)
+                queue->addHistory(history_entry + " " + std::to_string(songs) + " songs (YouTube)");
+        }
     }
     else
     {
@@ -174,11 +176,12 @@ void youtube::handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp
                         break;
                 }
             }
-            /*
-            if (doReply)
-                event.edit_original_response(dpp::message("Added " + std::to_string(songs) + " songs from "
-                + std::string(YOUTUBE_LIST_URL) + playlist["id"].get<std::string>()));
-                */
+            if (!history_entry.empty())
+            {
+            music_queue* queue = music_queue::getQueue(event.second);
+            if (queue)
+                queue->addHistory(history_entry + " " + std::to_string(songs) + " songs (yt-dlp)");
+            }
         }
     }
 }
@@ -222,7 +225,7 @@ song youtube::createSong(dpp::json& video)
     return new_song;
 }
 
-void youtube::parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string link)
+void youtube::parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string link, std::string history_entry)
 {
     link.erase(0, 1);
     std::string endpoint = YOUTUBE_ENDPOINT;
@@ -235,7 +238,7 @@ void youtube::parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::stri
     // /playlist?list=<id>
     if (type == "playlist")
     {
-        endpoint += "/playlistItems?part=snippet&maxResults=50&playlistId=" + id + "&key=";
+        endpoint += "/playlists?part=snippet&id=" + id + "&key=";
     }
     // ?v=<id>
     else if (type == "watch")
@@ -251,10 +254,10 @@ void youtube::parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::stri
             id = type.substr(slash2+1);
         endpoint += "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") + "&id=" + id + "&key=";
     }
-    makeRequest(event, endpoint);
+    makeRequest(event, endpoint, history_entry);
 }
 
-void youtube::ytsearch(std::pair<dpp::cluster&, dpp::snowflake> event, std::string query, bool doReply)
+void youtube::ytsearch(std::pair<dpp::cluster&, dpp::snowflake> event, std::string query, std::string history_entry)
 {
     std::string cmd = "yt-dlp -q --no-warnings --flat-playlist --no-playlist --print \"id\" \"ytsearch1:" + query + "\"";
     char buffer[50];
@@ -265,7 +268,9 @@ void youtube::ytsearch(std::pair<dpp::cluster&, dpp::snowflake> event, std::stri
         std::string id = buffer;
         id.pop_back();
         if (!id.empty())
-            makeRequest(event, std::string(YOUTUBE_ENDPOINT) + "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") + "&id=" + id + "&key=", doReply);
+        {
+            makeRequest(event, std::string(YOUTUBE_ENDPOINT) + "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") + "&id=" + id + "&key=", history_entry);
+        }
     }
 }
 

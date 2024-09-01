@@ -6,7 +6,7 @@ std::string spotify::SPOTIFY_ACCESS_TOKEN;
 std::string spotify::SPOTIFY_REFRESH_TOKEN;
 std::mutex spotify::token_mutex;
 
-void spotify::parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string url)
+void spotify::parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string url, std::string history_entry)
 {
     // remove / from beginning
     url.erase(0, 1);
@@ -23,24 +23,22 @@ void spotify::parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::stri
             std::string type = url.substr(0, slash);
             std::string endpoint;
             if (type == "playlist")
-                endpoint = "/playlists/" + id + "/tracks?market=US&limit=50&fields=" + dpp::utility::url_encode("next,items(track(name,artists.name))") + "&offset=0";
+                endpoint = "/playlists/" + id + "?market=US&fields=" + dpp::utility::url_encode("name,type,tracks(next,items.track(artists.name,name))");
             else if (type == "album")
-                endpoint = "/albums/" + id + "/tracks?market=US&limit=50&offset=0";
+                endpoint = "/albums/" + id + "?market=US";
             else
                 endpoint = "/tracks/" + id + "?market=US";
 
-            makeRequest(event, std::string(SPOTIFY_ENDPOINT) + endpoint);
-            return;
+            makeRequest(event, std::string(SPOTIFY_ENDPOINT) + endpoint, history_entry);
         }
     }
-    //event.edit_original_response(dpp::message("Could not parse spotify link."));
 }
 
 /*Will check if there is an access token, returns access token if so and the thread that called
 hasAccessToken will make http request. Otherwise it makes the POST call to refresh/create token and 
 in that callback will make the http request. Calling thread should do nothing if returns empty str
 */
-std::string spotify::hasAccessToken(std::pair<dpp::cluster&, dpp::snowflake> event, std::string& endpoint, size_t songs)
+std::string spotify::hasAccessToken(std::pair<dpp::cluster&, dpp::snowflake> event, std::string& endpoint, std::string history_entry, size_t songs)
 {
     std::lock_guard<std::mutex> guard(token_mutex);
     // no access token
@@ -62,7 +60,7 @@ std::string spotify::hasAccessToken(std::pair<dpp::cluster&, dpp::snowflake> eve
         // call api
         event.first.request(
             url, dpp::m_post,
-            [event, endpoint, songs](const dpp::http_request_completion_t& reply){
+            [event, endpoint, history_entry, songs](const dpp::http_request_completion_t& reply){
                 if (reply.status == 200)
                 {
                     std::lock_guard<std::mutex> guard(spotify::token_mutex);
@@ -90,8 +88,8 @@ std::string spotify::hasAccessToken(std::pair<dpp::cluster&, dpp::snowflake> eve
                     // with new credentials make the new request
                     event.first.request(
                         endpoint, dpp::m_get,
-                        [event, songs](const dpp::http_request_completion_t& reply){
-                            spotify::handleReply(event, reply, songs);
+                        [event, history_entry, songs](const dpp::http_request_completion_t& reply){
+                            spotify::handleReply(event, reply, history_entry, songs);
                         }, "", "", { {"Authorization", "Bearer  " + spotify::SPOTIFY_ACCESS_TOKEN} }
                     );
                 }
@@ -105,19 +103,19 @@ std::string spotify::hasAccessToken(std::pair<dpp::cluster&, dpp::snowflake> eve
         return SPOTIFY_ACCESS_TOKEN;
 }
 
-void spotify::makeRequest(std::pair<dpp::cluster&, dpp::snowflake> event, std::string endpoint, size_t songs)
+void spotify::makeRequest(std::pair<dpp::cluster&, dpp::snowflake> event, std::string endpoint, std::string history_entry, size_t songs)
 {
-    std::string access_token = hasAccessToken(event, endpoint, songs);
+    std::string access_token = hasAccessToken(event, endpoint, history_entry, songs);
     if (!access_token.empty())
         event.first.request(
             endpoint, dpp::m_get,
-            [event, songs](const dpp::http_request_completion_t& reply){
-                spotify::handleReply(event, reply, songs);
+            [event, songs, history_entry](const dpp::http_request_completion_t& reply){
+                spotify::handleReply(event, reply, history_entry, songs);
             }, "", "", { {"Authorization", "Bearer  " + access_token} }
         );
 }
 
-void spotify::handleReply(std::pair<dpp::cluster&, dpp::snowflake> event, const dpp::http_request_completion_t& reply, size_t songs)
+void spotify::handleReply(std::pair<dpp::cluster&, dpp::snowflake> event, const dpp::http_request_completion_t& reply, std::string history_entry, size_t songs)
 {
     if (reply.status == 200)
     {
@@ -125,13 +123,22 @@ void spotify::handleReply(std::pair<dpp::cluster&, dpp::snowflake> event, const 
         // dealing with an album or playlist
         if (json.contains("items"))
         {
-            handlePlaylist(event, json, songs);
+            handleAlbum(event, json, history_entry, songs);
+        }
+        else if (json.contains("tracks"))
+        {
+            std::string name = json["name"].get<std::string>();
+            if (name.empty())
+                name = "Unknown";
+            handlePlaylist(event, json["tracks"], history_entry + " queued from " + name, songs);
         }
         else
         {
-            handleTrack(event, json);
+            handleTrack(event, json, history_entry);
             std::string name = json["name"];
-            //event.edit_original_response(dpp::message("Added " + name + " from Spotify"));
+            music_queue* queue = music_queue::getQueue(event.second);
+            if (queue)
+                queue->addHistory(history_entry + " queued " + json["name"].get<std::string>());
         }
     }
     else if (reply.status == 429)
@@ -142,7 +149,7 @@ void spotify::handleReply(std::pair<dpp::cluster&, dpp::snowflake> event, const 
         //event.edit_original_response(dpp::message("There was an issue with queueing that song. Please try smth else"));
 }
 
-void spotify::handleTrack(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& track)
+void spotify::handleTrack(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& track, std::string history_entry)
 {
     // build search query for yt : "<track name> <artist names>"
     std::string query;
@@ -152,11 +159,37 @@ void spotify::handleTrack(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::j
         std::string name = track["artists"][0]["name"];
         query += " " + name;
     }
-    std::thread t([event, query](){ youtube::ytsearch(event, query, false); });
+    std::thread t([event, query](){ youtube::ytsearch(event, query); });
     t.detach();
 }
 
-void spotify::handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& playlist, size_t songs)
+void spotify::handleAlbum(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& album, std::string history_entry, size_t songs)
+{
+    // iterate through items
+    for (dpp::json track : album["items"])
+    {
+        if (track.contains("name"))
+        {
+            songs++;
+            handleTrack(event, track, "");
+        }
+    }
+
+    // go to next page if it exists
+    if (!album["next"].is_null())
+    {
+        std::string next = album["next"];
+        makeRequest(event, next, history_entry, songs);
+    }
+    else
+    {        
+        music_queue* queue = music_queue::getQueue(event.second);
+        if (queue)
+            queue->addHistory(history_entry + " " + std::to_string(songs) + " songs (Spotify)");
+    }
+}
+
+void spotify::handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& playlist, std::string history_entry, size_t songs)
 {
     // iterate through items
     for (dpp::json track : playlist["items"])
@@ -164,7 +197,7 @@ void spotify::handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp
         if (track.contains("name") || track.contains("track"))
         {
             songs++;
-            handleTrack(event, track.contains("name") ? track : track["track"]);
+            handleTrack(event, track.contains("name") ? track : track["track"], "");
         }
     }
 
@@ -172,10 +205,18 @@ void spotify::handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp
     if (!playlist["next"].is_null())
     {
         std::string next = playlist["next"];
-        size_t equals = next.rfind('=');
-        std::string fields = next.substr(equals+1);
-        makeRequest(event, next.substr(0, equals+1) + dpp::utility::url_encode(fields), songs);
+        if (playlist["type"] == "playlist")
+        {
+            size_t equals = next.rfind('=');
+            std::string fields = next.substr(equals+1);
+            next = next.substr(0, equals+1) + dpp::utility::url_encode(fields);
+        }
+        makeRequest(event, next, history_entry, songs);
     }
-    //else
-        //event.edit_original_response(dpp::message("Added " + std::to_string(songs) + " songs from Spotify!"));
+    else
+    {
+        music_queue* queue = music_queue::getQueue(event.second);
+        if (queue)
+            queue->addHistory(history_entry + " " + std::to_string(songs) + " songs (Spotify)");
+    }
 }
