@@ -9,6 +9,7 @@
 
 #define NEXT_SONG "resources/next.pcm"
 #define MAX_EMBED_VALUES 10
+#define MAX_HISTORY_ENTRIES 25
 #define DEFAULT_THUMBNAIL "https://e7.pngegg.com/pngimages/434/614/png-clipart-question-mark-graphy-big-question-mark-text-trademark.png"
 
 enum song_type {
@@ -54,9 +55,10 @@ class music_queue
         dpp::message get_embed();
         bool empty() { return queue.empty(); }
         void changePageNumber(int inc_value);
-        void setPage(page_type new_page){ page = new_page; }
+        void setPage(page_type new_page){ page = new_page; page_number = 0; }
         page_type getPage(){ return page; }
         void pause(){vc->pause_audio(!vc->is_paused());}
+        void addHistory(std::string new_entry);
         void shuffle();
     private:
         static std::unordered_map<dpp::snowflake, music_queue*> queue_map;
@@ -64,8 +66,10 @@ class music_queue
         static dpp::cache<dpp::message> player_embed_cache;
         dpp::discord_voice_client* vc;
         std::mutex queue_mutex;
+        std::mutex history_mutex;
         std::condition_variable vc_ready;
         std::deque<song> queue;
+        std::deque<std::string> history;
         bool stopLivestream;
         page_type page;
         size_t page_number;

@@ -233,8 +233,6 @@ bool music_queue::remove_from_queue(size_t start, size_t end)
 
 dpp::message music_queue::get_embed()
 {
-    std::lock_guard<std::mutex> guard(queue_mutex);
-
     dpp::message embed;
     switch (page)
     {
@@ -294,11 +292,13 @@ void music_queue::changePageNumber(int inc_value)
 
 dpp::message music_queue::get_queue_embed()
 {
+    std::lock_guard<std::mutex> guard(queue_mutex);
+
     size_t size = queue.size();
     size_t start = (MAX_EMBED_VALUES * page_number) + 1;
     size_t end = MAX_EMBED_VALUES * (page_number+1);
     // validate page
-    if (size < start)
+    if (size < start || start < 0)
     {
         page_number = 0;
         start = 1;
@@ -362,11 +362,63 @@ dpp::message music_queue::get_queue_embed()
 
 dpp::message music_queue::get_history_embed()
 {
-    return dpp::message();
+    std::lock_guard<std::mutex> guard(history_mutex);
+
+    size_t size = history.size();
+    size_t start = (MAX_EMBED_VALUES * page_number) + 1;
+    size_t end = MAX_EMBED_VALUES * (page_number+1);
+    // validate page
+    if (size < start || start < 0)
+    {
+        page_number = 0;
+        start = 1;
+        end = MAX_EMBED_VALUES;
+    }
+    dpp::embed q_embed = dpp::embed()
+        .set_color(dpp::colors::pink_rose)
+        .set_title("History")
+        .set_timestamp(time(0));
+    
+    if (history.size() > 0)
+    {
+        int i,j;
+        // write inline fields
+        for (i = start, j = start + (MAX_EMBED_VALUES / 2); i < history.size() && j < history.size() && j <= end; i++, j++)
+        {
+            q_embed.add_field(std::to_string(i) + ". ", history.at(i), true);
+            q_embed.add_field(std::to_string(j) + ". ", history.at(j), true);
+            q_embed.add_field("", "");
+        }
+        // write any remaining
+        for (; i < history.size() && i <= end - (MAX_EMBED_VALUES / 2); i++)
+            q_embed.add_field(std::to_string(i) + ". ", history.at(i));
+    }
+    else
+        q_embed.add_field("Empty!", "");
+
+    dpp::message msg = dpp::message(q_embed);
+
+    // return msg w/ components
+    return msg.add_component(
+        dpp::component().add_component(
+            dpp::component()
+                .set_emoji(dpp::unicode_emoji::left_arrow)
+                .set_id("prev")
+                .set_disabled(start < MAX_EMBED_VALUES)
+        )
+        .add_component(
+            dpp::component()
+                .set_emoji(dpp::unicode_emoji::right_arrow)
+                .set_id("next") // store current page number in id
+                .set_disabled(size < end)
+        )
+    );
 }
 
 dpp::message music_queue::get_playback_embed()
 {
+    std::lock_guard<std::mutex> guard(queue_mutex);
+    
     song song;
     bool noSongs = true;
     if (!queue.empty())
@@ -419,6 +471,15 @@ dpp::message music_queue::get_playback_embed()
                 .set_disabled(noSongs)
         )
     );
+}
+
+void music_queue::addHistory(std::string new_entry)
+{
+    std::lock_guard<std::mutex> guard(history_mutex);
+
+    if (history.size() == MAX_HISTORY_ENTRIES)
+        history.pop_front();
+    history.push_back(new_entry);
 }
 
 void music_queue::shuffle()
