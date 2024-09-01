@@ -62,6 +62,8 @@ int main(int argc, char *argv[])
         // handle passing marker in audio
         bot.on_voice_track_marker([](const dpp::voice_track_marker_t& marker){ music::handle_marker(marker); });
 
+        bot.on_form_submit([&bot](const dpp::form_submit_t& event){ music::handle_form(bot, event); });
+
         // handle autocomplete
         bot.on_autocomplete([&bot](const dpp::autocomplete_t& event) {
             for (auto& opt : event.options)
