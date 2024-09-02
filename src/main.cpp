@@ -64,6 +64,20 @@ int main(int argc, char *argv[])
 
         bot.on_form_submit([&bot](const dpp::form_submit_t& event){ music::handle_form(bot, event); });
 
+        bot.on_message_delete([&bot](const dpp::message_delete_t& event)
+        {
+            music_queue* queue = music_queue::getQueue(event.guild_id);
+            if (queue)
+            {
+                dpp::message* cached_msg = music_queue::getMessage(queue->getPlayerID());
+                // they deleted my precious player embed
+                if (cached_msg && cached_msg->id == event.id)
+                {
+                    bot.message_create(*cached_msg);
+                }
+            }
+        });
+
         // handle autocomplete
         bot.on_autocomplete([&bot](const dpp::autocomplete_t& event) {
             for (auto& opt : event.options)
