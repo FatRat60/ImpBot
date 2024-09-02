@@ -110,7 +110,8 @@ void youtube::handleVideo(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::j
         music_queue* queue = music_queue::getQueue(event.second);
         if (queue)
         {
-            bool doUpdate = queue->enqueue(new_song) && queue->getPage() != page_type::history;
+            // always update first queue otherwise dont
+            bool doUpdate = queue->enqueue(new_song);
             if (!history_entry.empty())
             {
                 queue->addHistory(history_entry + " queued " + new_song.title + ". (YouTube)");
