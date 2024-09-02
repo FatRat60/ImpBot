@@ -55,7 +55,11 @@ void youtube::handleReply(std::pair<dpp::cluster&, dpp::snowflake> event, const 
 
         std::string response_type = json["kind"].get<std::string>();
         if (response_type == "youtube#videoListResponse")
-            handleVideo(event, json["items"][0], history_entry);
+        {
+            // Some1 provided a link to a priv/deleted video
+            if (!json["items"].empty())
+                handleVideo(event, json["items"][0], history_entry);
+        }
         else if (response_type == "youtube#playlistListResponse")
             makeRequest(event, 
                 std::string(YOUTUBE_ENDPOINT) + "/playlistItems?part=snippet&maxResults=50&playlistId=" + json["items"][0]["id"].get<std::string>()
@@ -127,14 +131,20 @@ void youtube::handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp
     // json from youtube api
     if (playlist.contains("items"))
     {
+        std::cout << "Playlist\n";
         // iterate through each video
         for (dpp::json video : playlist["items"])
         {
-            songs++;
-            makeRequest(event, 
-            std::string(YOUTUBE_ENDPOINT) + "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") 
-            + "&id=" + video["snippet"]["resourceId"]["videoId"].get<std::string>() + "&key=");
+            // dont waste out api tokens :) no thumbnails means priv or deleted usually
+            if (!video["snippet"]["thumbnails"].empty())
+            {
+                songs++;
+                makeRequest(event, 
+                std::string(YOUTUBE_ENDPOINT) + "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") 
+                + "&id=" + video["snippet"]["resourceId"]["videoId"].get<std::string>() + "&key=");
+            }
         }
+        std::cout << "done with playlist\n";
 
         // next page of songs to add
         if (playlist.contains("nextPageToken"))
@@ -195,7 +205,7 @@ song youtube::createSong(dpp::json& video)
 
     if (video.contains("snippet"))
     {
-        if (video["snippet"]["title"] != "Deleted video")
+        if (video["snippet"]["title"].get<std::string>() != "Deleted video")
         {
             new_song.url = YOUTUBE_VIDEO_URL;
             new_song.title = video["snippet"]["title"];
