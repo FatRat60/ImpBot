@@ -38,7 +38,7 @@ class music_queue
 {
     public:
         static music_queue* getQueue(dpp::snowflake guild_id, bool create = false);
-        static void removeQueue(dpp::snowflake guild_id);
+        static void removeQueue(std::pair<dpp::cluster&, dpp::snowflake> event);
         static void cacheMessage(dpp::message& msg);
         static dpp::message* getMessage(dpp::snowflake msg_id){ return player_embed_cache.find(msg_id); }
         static void removeMessage(dpp::snowflake msg_id);

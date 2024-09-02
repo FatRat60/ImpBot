@@ -32,12 +32,12 @@ music_queue* music_queue::getQueue(dpp::snowflake guild_id, bool create)
     return found_queue;
 }
 
-void music_queue::removeQueue(dpp::snowflake guild_id)
+void music_queue::removeQueue(std::pair<dpp::cluster&, dpp::snowflake> event)
 {
     // capture the queue map mutex first
     std::shared_lock<std::shared_mutex> shared_map_guard(map_mutex);
     // retrieve music_queue from map if exists
-    auto res = queue_map.find(guild_id);
+    auto res = queue_map.find(event.second);
     // music_queue exists
     if (res != queue_map.end())
     {
@@ -48,6 +48,11 @@ void music_queue::removeQueue(dpp::snowflake guild_id)
         queue_map.erase(res); // delete from map
         // remove cache msg
         removeMessage(queue_to_del->getPlayerID());
+        // msg takes 60 seconds to delete so its ok to do this after removeMessge()
+        dpp::message* msg = getMessage(queue_to_del->getPlayerID());
+        if (msg)
+            event.first.message_delete(msg->id, msg->channel_id);
+
         delete queue_to_del; // delete music_queue
     }
 }
@@ -275,6 +280,13 @@ dpp::message music_queue::get_embed()
                 .set_label("Add Music")
                 .set_id("add")
         )
+        .add_component(
+            dpp::component()
+                .set_label("End")
+                .set_id("leave")
+                .set_emoji(dpp::unicode_emoji::skull)
+                .set_style(dpp::cos_danger)
+        )
     );
 
     return embed;
@@ -469,6 +481,11 @@ dpp::message music_queue::get_playback_embed()
                 .set_emoji(dpp::unicode_emoji::fast_forward)
                 .set_id("skip")
                 .set_disabled(noSongs)
+        )
+        .add_component(
+            dpp::component()
+                .set_emoji(dpp::unicode_emoji::arrows_clockwise)
+                .set_id("shuffle")
         )
     );
 }
