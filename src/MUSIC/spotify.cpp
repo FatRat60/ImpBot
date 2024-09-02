@@ -123,14 +123,14 @@ void spotify::handleReply(std::pair<dpp::cluster&, dpp::snowflake> event, const 
         // dealing with an album or playlist
         if (json.contains("items"))
         {
-            handleAlbum(event, json, history_entry, songs);
+            handlePlaylistItems(event, json, history_entry, songs);
         }
         else if (json.contains("tracks"))
         {
             std::string name = json["name"].get<std::string>();
             if (name.empty())
                 name = "Unknown";
-            handlePlaylist(event, json["tracks"], history_entry + " queued from " + name, songs);
+            handlePlaylist(event, json, history_entry + " queued from " + name, songs);
         }
         else
         {
@@ -163,22 +163,27 @@ void spotify::handleTrack(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::j
     t.detach();
 }
 
-void spotify::handleAlbum(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& album, std::string history_entry, size_t songs)
+void spotify::handlePlaylistItems(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& playlistItem, std::string history_entry, size_t songs)
 {
     // iterate through items
-    for (dpp::json track : album["items"])
+    for (dpp::json track : playlistItem["items"])
     {
-        if (track.contains("name"))
+        if (track.contains("name") || track.contains("track"))
         {
             songs++;
-            handleTrack(event, track, "");
+            handleTrack(event, track.contains("name") ? track : track["track"], "");
         }
     }
 
     // go to next page if it exists
-    if (!album["next"].is_null())
+    if (!playlistItem["next"].is_null())
     {
-        std::string next = album["next"];
+        std::string next = playlistItem["next"].get<std::string>();
+        if (!playlistItem.contains("href"))
+        {
+            size_t equals = next.rfind('=');
+            next = next.substr(0, equals+1) + dpp::utility::url_encode("next,items(track(name,artists.name))");
+        }
         makeRequest(event, next, history_entry, songs);
     }
     else
@@ -191,8 +196,9 @@ void spotify::handleAlbum(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::j
 
 void spotify::handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& playlist, std::string history_entry, size_t songs)
 {
+    std::cout << "playlist\n";
     // iterate through items
-    for (dpp::json track : playlist["items"])
+    for (dpp::json track : playlist["tracks"]["items"])
     {
         if (track.contains("name") || track.contains("track"))
         {
@@ -202,14 +208,13 @@ void spotify::handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp
     }
 
     // go to next page if it exists
-    if (!playlist["next"].is_null())
+    if (!playlist["tracks"]["next"].is_null())
     {
-        std::string next = playlist["next"];
-        if (playlist["type"] == "playlist")
+        std::string next = playlist["tracks"]["next"].get<std::string>();
+        if (playlist["type"].get<std::string>() == "playlist")
         {
             size_t equals = next.rfind('=');
-            std::string fields = next.substr(equals+1);
-            next = next.substr(0, equals+1) + dpp::utility::url_encode(fields);
+            next = next.substr(0, equals+1) + dpp::utility::url_encode("next,items(track(name,artists.name))");
         }
         makeRequest(event, next, history_entry, songs);
     }

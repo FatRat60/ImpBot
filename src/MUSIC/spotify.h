@@ -22,7 +22,7 @@ class spotify
         static void makeRequest(std::pair<dpp::cluster&, dpp::snowflake> event, std::string endpoint, std::string history_entry, size_t songs = 0);
         static void handleReply(std::pair<dpp::cluster&, dpp::snowflake> event, const dpp::http_request_completion_t& reply, std::string history_entry, size_t songs);
         static void handleTrack(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& track, std::string history_entry);
-        static void handleAlbum(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& playlist, std::string history_entry, size_t songs);
+        static void handlePlaylistItems(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& playlist, std::string history_entry, size_t songs);
         static void handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp::json& playlist, std::string history_entry, size_t songs);
 };
 
