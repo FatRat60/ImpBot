@@ -32,7 +32,7 @@ music_queue* music_queue::getQueue(dpp::snowflake guild_id, bool create)
     return found_queue;
 }
 
-void music_queue::removeQueue(std::pair<dpp::cluster&, dpp::snowflake> event)
+void music_queue::removeQueue(std::pair<dpp::discord_client&, dpp::snowflake> event)
 {
     // capture the queue map mutex first
     std::shared_lock<std::shared_mutex> shared_map_guard(map_mutex);
@@ -51,10 +51,11 @@ void music_queue::removeQueue(std::pair<dpp::cluster&, dpp::snowflake> event)
         // msg takes 60 seconds to delete so its ok to do this after removeMessge()
         dpp::message* msg = getMessage(queue_to_del->getPlayerID());
         if (msg)
-            event.first.message_delete(msg->id, msg->channel_id);
+            event.first.creator->message_delete(msg->id, msg->channel_id);
 
         delete queue_to_del; // delete music_queue
     }
+    event.first.disconnect_voice(event.second);
 }
 
 void music_queue::cacheMessage(dpp::message &msg)

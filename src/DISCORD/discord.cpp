@@ -201,13 +201,10 @@ void discord::join(dpp::cluster& bot, const dpp::slashcommand_t& event)
 void discord::leave(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
     // TODO leave will need to properly handle terminating of music 
-    auto current_vc = event.from->get_voice(event.command.guild_id);
-    if (current_vc)
+    music_queue* queue = music_queue::getQueue(event.command.guild_id);
+    if (queue)
     {
-        music::handle_voice_leave(event);
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        current_vc->voiceclient->stop_audio();
-        event.from->disconnect_voice(event.command.guild_id);
+        music::handle_voice_leave(std::pair<dpp::discord_client&, dpp::snowflake>(*event.from, event.command.guild_id));
         event.reply("Bye Bye");
     }
     else

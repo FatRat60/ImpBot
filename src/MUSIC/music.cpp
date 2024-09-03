@@ -212,9 +212,9 @@ void music::handle_marker(const dpp::voice_track_marker_t &marker)
     }
 }
 
-void music::handle_voice_leave(const dpp::slashcommand_t& event)
+void music::handle_voice_leave(std::pair<dpp::discord_client&, dpp::snowflake> event)
 {
-    music_queue::removeQueue(std::pair<dpp::cluster&, dpp::snowflake>(*event.from->creator, event.command.guild_id));
+    music_queue::removeQueue(event);
 }
 
 void music::handle_button_press(const dpp::button_click_t &event)
@@ -261,7 +261,7 @@ void music::handle_button_press(const dpp::button_click_t &event)
                 doEdit = queue->getPage() == page_type::queue;
             }
             else if (event.custom_id == "leave"){
-                music_queue::removeQueue(std::pair<dpp::cluster&, dpp::snowflake>(*event.from->creator, event.command.guild_id));
+                handle_voice_leave(std::pair<dpp::discord_client&, dpp::snowflake>(*event.from, event.command.guild_id));
                 doEdit = false;
             }
             else if (event.custom_id == "stop"){
