@@ -131,7 +131,6 @@ void youtube::handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp
     // json from youtube api
     if (playlist.contains("items"))
     {
-        std::cout << "Playlist\n";
         // iterate through each video
         for (dpp::json video : playlist["items"])
         {
@@ -144,7 +143,6 @@ void youtube::handlePlaylist(std::pair<dpp::cluster&, dpp::snowflake> event, dpp
                 + "&id=" + video["snippet"]["resourceId"]["videoId"].get<std::string>() + "&key=");
             }
         }
-        std::cout << "done with playlist\n";
 
         // next page of songs to add
         if (playlist.contains("nextPageToken"))
