@@ -116,9 +116,9 @@ void music::skip(dpp::cluster& bot, const dpp::slashcommand_t& event)
     {
         if (!queue->empty())
         {
-        event.reply("Skipped");
-        if (queue->skip())
-            music_queue::updateMessage(std::pair<dpp::cluster&, dpp::snowflake>(*event.from->creator, event.command.guild_id));
+            event.reply("Skipped");
+            if (queue->skip())
+                music_queue::updateMessage(std::pair<dpp::cluster&, dpp::snowflake>(*event.from->creator, event.command.guild_id));
         }
         else
         {
