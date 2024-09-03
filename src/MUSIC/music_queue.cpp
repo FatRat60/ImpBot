@@ -111,22 +111,17 @@ Returns true if download is succesful AND song is added to queue, else false*/
 bool music_queue::enqueue(song &song_to_add)
 {
     // when the first song is a livestream 
-    std::lock_guard<std::mutex> guard(queue_mutex); // acquire mutex for queue
+    std::unique_lock<std::mutex> guard(queue_mutex); // acquire mutex for queue
 
     // add song to queue
     queue.push_back(song_to_add);
     // stream song or pre-download
-    if (queue.size() == 1)
+    if (queue.size() == 1 || (queue.size() == 2 && song_to_add.type != livestream))
     {
         // stream song straight to disc
-        stopLivestream = false;
-        std::thread t([url = song_to_add.url, this](){ this->handle_download(url); });
-        t.detach();
-    }
-    else if (queue.size() == 2 && song_to_add.type != livestream)
-    {
-        // preload
-        std::thread t([url = song_to_add.url, this](){ this->preload(url); });
+        std::thread t([url = song_to_add.url, this](){
+            this->handle_download(url);
+        });
         t.detach();
     }
     std::cout << "Queued song\n";
@@ -144,45 +139,22 @@ bool music_queue::go_next()
     if (!queue.empty())
     {
         queue.pop_front();
-
-        if (!queue.empty())
+        // livestream downloads aren't prelaunched so launch here
+        if (!queue.empty() && queue.front().type == livestream)
         {
-            // send next song
-            song& next = queue.front();
-            if (next.type == livestream)
-            {
-                stopLivestream = false;
-                std::thread t([url = next.url, this](){ this->handle_download(url); });
-                t.detach();
-            }
-            else
-            {
-                // read pcm bytes from file
-                FILE* next_pcm = fopen(NEXT_SONG, "rb");
-                if (next_pcm)
-                {
-                    constexpr size_t buffsize = dpp::send_audio_raw_max_length;
-                    char buffer[dpp::send_audio_raw_max_length];
-                    size_t curr_read = 0;
+            std::thread t([url = queue.front().url, this](){
+                this->handle_download(url);
+            });
+            t.detach();
+        }
 
-                    while (!vc->terminating && (curr_read = fread(buffer, sizeof(char), buffsize, next_pcm)) == buffsize)
-                        vc->send_audio_raw((uint16_t*)buffer, buffsize);
-
-                    if (!vc->terminating && curr_read > 0)
-                    {
-                        int rem = curr_read % 4;
-                        vc->send_audio_raw((uint16_t*)buffer, curr_read-rem);
-                    }
-                }
-                vc->insert_marker("end");
-            }
-            // preload if available
-            if (queue.size() > 1 && queue.at(1).type != livestream)
-            {
-                std::thread t([url = queue.at(1).url, this](){ this->preload(url); });
-                t.detach();
-            }
-            return true;
+        // ionly preLaunch if not livestream
+        if (queue.size() > 1 && queue.at(1).type != livestream)
+        {
+            std::thread t([url = queue.at(1).url, this](){
+                this->handle_download(url);
+            });
+            t.detach();
         }
     }
     return false;
@@ -192,9 +164,8 @@ bool music_queue::skip()
 {
     if (!queue.empty() && queue.front().type == livestream)
     {
-        std::lock_guard<std::mutex> guard(queue_mutex);
         // need to signal flag to end livestream. Afterwhich a marker will get added and trigger
-        stopLivestream = true;
+        stopLivestream.store(true);
         vc->skip_to_next_marker();
         return false;
     }
@@ -209,7 +180,7 @@ bool music_queue::skip()
 void music_queue::clear_queue()
 {
     std::lock_guard<std::mutex> guard(queue_mutex);
-    stopLivestream = true; // terminate livestream
+    stopLivestream.store(true); // terminate livestream
     queue.clear();
     vc->stop_audio();
 }
@@ -229,7 +200,7 @@ bool music_queue::remove_from_queue(size_t start, size_t end)
 
         if (start == 1 && queue.size() > 1 && queue.at(1).type != livestream)
         {
-            std::thread t([url = queue.at(1).url,this](){ this->preload(url); });
+            std::thread t([url = queue.at(1).url,this](){ this->handle_download(url); });
             t.detach();
         }
         return true;
@@ -507,51 +478,43 @@ void music_queue::shuffle()
     auto rng_seed = std::chrono::system_clock::now().time_since_epoch().count();
     std::shuffle(queue.begin()+1, queue.end(), std::default_random_engine(rng_seed));
 
-    if (queue.size() > 1)
+    if (queue.size() > 1 && queue.at(1).type != livestream)
     {
-        std::thread t([url = queue.at(1).url, this](){ this->preload(url); });
+        std::thread t([url = queue.at(1).url, this](){ this->handle_download(url); });
         t.detach();
     }
 }
 
 /*This function handles streaming of song to discord. Will release mutex and block if stream is live
 to allow queue to still add songs. Else holds mutex until download is finished*/
-bool music_queue::handle_download(std::string url)
+void music_queue::handle_download(std::string url)
 {
-    std::string cmd = "yt-dlp -f 140/139/234/233 -q --no-warnings -o - --no-playlist " + url + " | ffmpeg -i pipe:.m4a -f s16le -ar 48000 -ac 2 -loglevel quiet pipe:.pcm";
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
-    if (!pipe)
-        return false;
-    constexpr size_t buffsize = dpp::send_audio_raw_max_length;
-    char buffer[dpp::send_audio_raw_max_length];
-    size_t curr_read = 0;
-    
+    std::lock_guard<std::mutex> dl_guard(download_mutex);
+    // wait for thread to finish and/or vc to be ready
     if (!vc)
     {
         std::unique_lock<std::mutex> guard(queue_mutex);
-        std::cout << "Waiting for vc\n";
         vc_ready.wait(guard);
-        std::cout << "Continuing...\n";
     }
-
-    while (!vc->terminating && !stopLivestream && (curr_read = fread(buffer, sizeof(char), buffsize, pipe.get())) == buffsize)
-        vc->send_audio_raw((uint16_t*)buffer, buffsize);
-
-    if (!vc->terminating && !stopLivestream && curr_read > 0)
+    std::string cmd = "yt-dlp -f 140/139/234/233 -q --no-warnings -o - --no-playlist " + url + " | ffmpeg -i pipe:.m4a -f s16le -ar 48000 -ac 2 -loglevel quiet pipe:.pcm";
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+    if (pipe)
     {
-        int rem = curr_read % 4;
-        vc->send_audio_raw((uint16_t*)buffer, curr_read-rem);
+        constexpr size_t buffsize = dpp::send_audio_raw_max_length;
+        char buffer[dpp::send_audio_raw_max_length];
+        size_t curr_read = 0;
+        while (!vc->terminating && !stopLivestream.load() && (curr_read = fread(buffer, sizeof(char), buffsize, pipe.get())) == buffsize)
+            vc->send_audio_raw((uint16_t*)buffer, buffsize);
+        if (!vc->terminating && !stopLivestream.load() && curr_read > 0)
+        {
+            int rem = curr_read % 4;
+            vc->send_audio_raw((uint16_t*)buffer, curr_read-rem);
+        }
     }
+    stopLivestream.store(false);
+    // write marker so we can join
     if (!vc->terminating)
         vc->insert_marker("end");
 
     std::cout << "Finished streaming bytes\n";
-    return true;
-}
-
-bool music_queue::preload(std::string url)
-{
-    std::string cmd = "yt-dlp -f 140/139/234/233 -q --no-warnings -o - --no-playlist " + url + 
-    " | ffmpeg -i pipe:.m4a -f s16le -ar 48000 -ac 2 -loglevel quiet -y " + std::string(NEXT_SONG);
-    return system(cmd.c_str()) == 0;
 }

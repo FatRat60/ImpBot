@@ -4,8 +4,10 @@
 #include <dpp/dpp.h>
 #include <mutex>
 #include <condition_variable>
+#include <thread>
 #include <deque>
 #include <unordered_map>
+#include <atomic>
 
 #define NEXT_SONG "resources/next.pcm"
 #define MAX_EMBED_VALUES 10
@@ -43,9 +45,9 @@ class music_queue
         static dpp::message* getMessage(dpp::snowflake msg_id){ return player_embed_cache.find(msg_id); }
         static void removeMessage(dpp::snowflake msg_id);
         static void updateMessage(std::pair<dpp::cluster&, dpp::snowflake> event);
-        music_queue() { stopLivestream = false; page_number = 0; vc = nullptr; page = playback_control; player_id = 0; }
-        void setPlayerID(dpp::snowflake new_id) { player_id = new_id; }
-        dpp::snowflake getPlayerID(){ return player_id; }
+        music_queue() { stopLivestream.store(false); page_number.store(0); vc = nullptr; page.store(playback_control); player_id.store(0); }
+        void setPlayerID(dpp::snowflake new_id) { player_id.store(new_id); }
+        dpp::snowflake getPlayerID(){ return player_id.load(); }
         void setVoiceClient(dpp::discord_voice_client* voice);
         bool enqueue(song& song_to_add);
         bool go_next();
@@ -55,27 +57,27 @@ class music_queue
         dpp::message get_embed();
         bool empty() { return queue.empty(); }
         void changePageNumber(int inc_value);
-        void setPage(page_type new_page){ page = new_page; page_number = 0; }
-        page_type getPage(){ return page; }
-        void pause(){vc->pause_audio(!vc->is_paused());}
+        void setPage(page_type new_page){ page.store(new_page); page_number.store(0); }
+        page_type getPage(){ return page.load(); }
+        void pause(){ vc->pause_audio(!vc->is_paused());}
         void addHistory(std::string new_entry);
         void shuffle();
     private:
         static std::unordered_map<dpp::snowflake, music_queue*> queue_map;
         static std::shared_mutex map_mutex;
         static dpp::cache<dpp::message> player_embed_cache;
-        dpp::discord_voice_client* vc;
+        dpp::discord_voice_client* vc; // dpp::discord_voice_client*
         std::mutex queue_mutex;
         std::mutex history_mutex;
+        std::mutex download_mutex;
         std::condition_variable vc_ready;
         std::deque<song> queue;
         std::deque<std::string> history;
-        bool stopLivestream;
-        page_type page;
-        size_t page_number;
-        dpp::snowflake player_id;
-        bool handle_download(std::string url);
-        bool preload(std::string url);
+        std::atomic_bool stopLivestream;
+        std::atomic<page_type> page; // page_type
+        std::atomic_size_t page_number; // size_t
+        std::atomic<dpp::snowflake> player_id; // dpp::snowflake
+        void handle_download(std::string url);
         dpp::message get_queue_embed();
         dpp::message get_history_embed();
         dpp::message get_playback_embed();
