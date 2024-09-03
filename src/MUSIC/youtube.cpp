@@ -286,7 +286,7 @@ void youtube::ytsearch(std::pair<dpp::cluster&, dpp::snowflake> event, std::stri
 std::string youtube::convertDuration(std::string old_duration)
 {
     std::string new_duration;
-    if (old_duration == "POD")
+    if (old_duration == "P0D")
         new_duration = "LIVE";
     else if (!old_duration.empty() && old_duration[0] == 'P')
     {   // convert from ISO-8601
