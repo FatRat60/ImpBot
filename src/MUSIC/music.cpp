@@ -55,14 +55,13 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                         dpp::message new_msg = std::get<dpp::message>(callback.value);
                         music_queue::cacheMessage(new_msg);
                         queue->setPlayerID(new_msg.id);
+
+                        // continue to queue
+                        std::pair<dpp::cluster&, dpp::snowflake> pair(*event.from->creator, event.command.guild_id);
+                        parseURL(pair, std::get<std::string>(event.get_parameter("link")), event.command.get_issuing_user().get_mention());
                     }
                 });
-                // continue to queue
-                std::pair<dpp::cluster&, dpp::snowflake> pair(*event.from->creator, event.command.guild_id);
-                parseURL(pair, std::get<std::string>(event.get_parameter("link")), event.command.get_issuing_user().get_mention());
             }
-            else
-                std::cout << "this better not print\n";
         });
     }
 }
