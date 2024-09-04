@@ -45,17 +45,17 @@ void music_queue::removeQueue(std::pair<dpp::discord_client&, dpp::snowflake> ev
         std::unique_lock<std::shared_mutex> write_map_guard(map_mutex);
         music_queue* queue_to_del = res->second;
         res->second->clear_queue();
+        event.first.disconnect_voice(event.second);
         queue_map.erase(res); // delete from map
         // remove cache msg
+        dpp::message* msg = getMessage(queue_to_del->getPlayerID());
         removeMessage(queue_to_del->getPlayerID());
         // msg takes 60 seconds to delete so its ok to do this after removeMessge()
-        dpp::message* msg = getMessage(queue_to_del->getPlayerID());
         if (msg)
             event.first.creator->message_delete(msg->id, msg->channel_id);
 
         delete queue_to_del; // delete music_queue
     }
-    event.first.disconnect_voice(event.second);
 }
 
 void music_queue::cacheMessage(dpp::message &msg)
@@ -349,13 +349,13 @@ dpp::message music_queue::get_history_embed()
     std::lock_guard<std::mutex> guard(history_mutex);
 
     size_t size = history.size();
-    size_t start = (MAX_EMBED_VALUES * page_number) + 1;
+    size_t start = (MAX_EMBED_VALUES * page_number);
     size_t end = MAX_EMBED_VALUES * (page_number+1);
     // validate page
     if (size < start || start < 0)
     {
         page_number = 0;
-        start = 1;
+        start = 0;
         end = MAX_EMBED_VALUES;
     }
     dpp::embed q_embed = dpp::embed()
@@ -367,15 +367,15 @@ dpp::message music_queue::get_history_embed()
     {
         int i,j;
         // write inline fields
-        for (i = start, j = start + (MAX_EMBED_VALUES / 2); i < history.size() && j < history.size() && j <= end; i++, j++)
+        for (i = start, j = start + (MAX_EMBED_VALUES / 2); i < history.size() && j < history.size() && j < end; i++, j++)
         {
-            q_embed.add_field(std::to_string(i) + ". ", history.at(i), true);
-            q_embed.add_field(std::to_string(j) + ". ", history.at(j), true);
+            q_embed.add_field(std::to_string(i+1) + ". ", history.at(i), true);
+            q_embed.add_field(std::to_string(j+1) + ". ", history.at(j), true);
             q_embed.add_field("", "");
         }
         // write any remaining
-        for (; i < history.size() && i <= end - (MAX_EMBED_VALUES / 2); i++)
-            q_embed.add_field(std::to_string(i) + ". ", history.at(i));
+        for (; i < history.size() && i < end - (MAX_EMBED_VALUES / 2); i++)
+            q_embed.add_field(std::to_string(i+1) + ". ", history.at(i));
     }
     else
         q_embed.add_field("Empty!", "");
@@ -464,6 +464,7 @@ dpp::message music_queue::get_playback_embed()
 
 void music_queue::addHistory(std::string new_entry)
 {
+    std::cout << "adding history\n";
     std::lock_guard<std::mutex> guard(history_mutex);
 
     if (history.size() == MAX_HISTORY_ENTRIES)
@@ -491,11 +492,13 @@ void music_queue::handle_download(std::string url)
 {
     std::lock_guard<std::mutex> dl_guard(download_mutex);
     // wait for thread to finish and/or vc to be ready
-    if (!vc)
+    if (!this->vc)
     {
         std::unique_lock<std::mutex> guard(queue_mutex);
         vc_ready.wait(guard);
     }
+
+    dpp::discord_voice_client* vc = this->vc;
     std::string cmd = "yt-dlp -f 140/139/234/233 -q --no-warnings -o - --no-playlist " + url + " | ffmpeg -i pipe:.m4a -f s16le -ar 48000 -ac 2 -loglevel quiet pipe:.pcm";
     std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
     if (pipe)
@@ -503,18 +506,20 @@ void music_queue::handle_download(std::string url)
         constexpr size_t buffsize = dpp::send_audio_raw_max_length;
         char buffer[dpp::send_audio_raw_max_length];
         size_t curr_read = 0;
-        while (!vc->terminating && !stopLivestream.load() && (curr_read = fread(buffer, sizeof(char), buffsize, pipe.get())) == buffsize)
+        while ((curr_read = fread(buffer, sizeof(char), buffsize, pipe.get())) == buffsize && !vc->terminating && !stopLivestream.load())
             vc->send_audio_raw((uint16_t*)buffer, buffsize);
-        if (!vc->terminating && !stopLivestream.load() && curr_read > 0)
+        if (curr_read > 0 && !vc->terminating && !stopLivestream.load())
         {
             int rem = curr_read % 4;
             vc->send_audio_raw((uint16_t*)buffer, curr_read-rem);
         }
     }
-    stopLivestream.store(false);
     // write marker so we can join
     if (!vc->terminating)
+    {
+        stopLivestream.store(false);
         vc->insert_marker("end");
+    }
 
     std::cout << "Finished streaming bytes\n";
 }
