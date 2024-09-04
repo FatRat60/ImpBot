@@ -73,7 +73,20 @@ int main(int argc, char *argv[])
                 // they deleted my precious player embed
                 if (cached_msg && cached_msg->id == event.id)
                 {
-                    bot.message_create(*cached_msg);
+                    music_queue::removeMessage(queue->getPlayerID());
+                    dpp::message msg = queue->get_embed();
+                    msg.set_guild_id(event.guild_id);
+                    msg.set_channel_id(event.channel_id);
+                    bot.message_create(msg,
+                        [guild_id = event.guild_id](const dpp::confirmation_callback_t& callback){
+                            music_queue* queue = music_queue::getQueue(guild_id);
+                            if (!callback.is_error() && queue)
+                            {
+                                dpp::message msg = std::get<dpp::message>(callback.value);
+                                music_queue::cacheMessage(msg);
+                                queue->setPlayerID(msg.id);
+                            }
+                        });
                 }
             }
         });
