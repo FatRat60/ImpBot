@@ -1,8 +1,5 @@
 #include "music_queue.h"
 #include <dpp/unicode_emoji.h>
-#include <algorithm>
-#include <random>
-#include <chrono>
 
 std::unordered_map<dpp::snowflake, music_queue*> music_queue::queue_map;
 std::shared_mutex music_queue::map_mutex;
@@ -520,6 +517,4 @@ void music_queue::handle_download(std::string url)
         stopLivestream.store(false);
         vc->insert_marker("end");
     }
-
-    std::cout << "Finished streaming bytes\n";
 }

@@ -8,6 +8,9 @@
 #include <deque>
 #include <unordered_map>
 #include <atomic>
+#include <algorithm>
+#include <random>
+#include <chrono>
 
 #define NEXT_SONG "resources/next.pcm"
 #define MAX_EMBED_VALUES 10
