@@ -23,6 +23,8 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
         dpp::slashcommand playcmd("play", "Play song from a link or a search term", bot.me.id);
         playcmd.add_option(
             dpp::command_option(dpp::co_string, "link", "song link or search term", true)
+        ).add_option(
+            dpp::command_option(dpp::co_boolean, "shuffle", "whether to shuffle when queueing playlist")
         );
         dpp::slashcommand pausecmd("pause", "Pause the current song", bot.me.id);
         dpp::slashcommand stopcmd("stop", "stops current song and clears queue", bot.me.id);
