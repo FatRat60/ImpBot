@@ -19,7 +19,7 @@ class music
         static void handle_button_press(const dpp::button_click_t& event);
         static void handle_form(dpp::cluster& bot, const dpp::form_submit_t& event);
     private:
-        static void parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string search_term, std::string history_string);
+        static void parseURL(song_event& event, std::string search_term);
 };
 
 

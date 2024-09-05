@@ -57,8 +57,19 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                         queue->setPlayerID(new_msg.id);
 
                         // continue to queue
-                        std::pair<dpp::cluster&, dpp::snowflake> pair(*event.from->creator, event.command.guild_id);
-                        parseURL(pair, std::get<std::string>(event.get_parameter("link")), event.command.get_issuing_user().get_mention());
+                        song_event song_event = {
+                            *event.from->creator, // bot
+                            event.command.guild_id, // guild_id
+                            false, // shuffle?
+                            event.command.get_issuing_user().get_mention() // history_entry
+                        };
+                        try
+                        {
+                            song_event.shuffle = std::get<bool>(event.get_parameter("shuffle"));
+                        }
+                        catch(const std::exception& e){}
+                        
+                        parseURL(song_event, std::get<std::string>(event.get_parameter("link")));
                     }
                 });
             }
@@ -286,14 +297,20 @@ void music::handle_form(dpp::cluster& bot, const dpp::form_submit_t& event)
     {
         std::thread t([&bot, event]{
             std::string link = std::get<std::string>(event.components[0].components[0].value);
-            parseURL(std::pair<dpp::cluster&, dpp::snowflake>(bot, event.command.guild_id), link, event.command.get_issuing_user().get_mention());
+            song_event song_event = {
+                bot, // bot
+                event.command.guild_id, // guild_id
+                true, // shuffle?
+                event.command.get_issuing_user().get_mention() // history_entry
+            };
+            parseURL(song_event, link);
         });
         t.detach();
     }
     event.reply();
 }
 
-void music::parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string search_term, std::string history_string)
+void music::parseURL(song_event& event, std::string search_term)
 {
     if (search_term.substr(0, 8) == "https://")
     {
@@ -302,28 +319,28 @@ void music::parseURL(std::pair<dpp::cluster&, dpp::snowflake> event, std::string
         // music
         if (platform == "www.youtube.com" || platform == "youtube.com" || platform == "youtu.be" || platform == "music.youtube.com")
         {
-            youtube::parseURL(event, search_term.substr(slash), history_string);
+            youtube::parseURL(event, search_term.substr(slash));
         }
         // spotify
         else if (platform == "open.spotify.com")
         {
-            spotify::parseURL(event, search_term.substr(slash), history_string);
+            spotify::parseURL(event, search_term.substr(slash));
         }
         // soundcloud
         else
         {
-            music_queue* queue = music_queue::getQueue(event.second);
+            music_queue* queue = music_queue::getQueue(event.guild_id);
             if (queue)
-                queue->addHistory(history_string + " provided a link that isn't supported...");
+                queue->addHistory(event.history_entry + " provided a link that isn't supported...");
         }
     }
     // user sent a query. Search music
     else
     {
-        youtube::ytsearch(event, search_term);
-        music_queue* queue = music_queue::getQueue(event.second);
+        music_queue* queue = music_queue::getQueue(event.guild_id);
         if (queue)
-            queue->addHistory(history_string + " searched for " + search_term);
+            queue->addHistory(event.history_entry + " searched for " + search_term);
+        youtube::ytsearch(event.zeroHistory(), search_term);
     }
 }
 
