@@ -23,7 +23,7 @@ target_include_directories(${PROJ_NAME} PRIVATE
 target_link_libraries(${PROJ_NAME} dpp oggz yaml-cpp)
 
 set_target_properties(${PROJ_NAME} PROPERTIES
-CXX_STANDARD 20
+CXX_STANDARD 17
 CXX_STANDARD_REQUIRED ON
 )
 
