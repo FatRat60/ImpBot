@@ -133,6 +133,12 @@ bool music_queue::go_next()
 {
     std::lock_guard<std::mutex> guard(queue_mutex);
 
+    if (didShuffle)
+    {
+        vc->skip_to_next_marker();
+        didShuffle = false;
+    }
+
     if (!queue.empty())
     {
         queue.pop_front();
@@ -478,6 +484,7 @@ void music_queue::shuffle()
 
     if (queue.size() > 1 && queue.at(1).type != livestream)
     {
+        didShuffle = true;
         std::thread t([url = queue.at(1).url, this](){ this->handle_download(url); });
         t.detach();
     }
