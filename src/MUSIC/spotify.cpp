@@ -77,10 +77,10 @@ std::string spotify::hasAccessToken(song_event& event, std::string& endpoint, si
                         if (expire_time > 30)
                             expire_time -= 30;
                         event.bot.start_timer(
-                            [bot = &event.bot](const dpp::timer& timer){
+                            [&bot = event.bot](const dpp::timer& timer){
                                 std::lock_guard<std::mutex> guard(spotify::token_mutex);
                                 spotify::SPOTIFY_ACCESS_TOKEN = "";
-                                bot->stop_timer(timer);
+                                bot.stop_timer(timer);
                             }, expire_time
                         );
                     }

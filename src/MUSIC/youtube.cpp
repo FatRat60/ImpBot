@@ -1,9 +1,13 @@
 #include "youtube.h"
 #include "spotify.h"
+extern "C" {
+    #include "parseENV.h"
+}
 #include <iostream>
 #include <cstdlib>
 #include <memory>
 #include <stdio.h>
+#include <ctime>
 
 // yt-dlp -q --no-warnings -x --audio-format opus -o - -S +size --no-playlist 
 // "yt-dlp -f 140 -q --no-warnings -o - --no-playlist " + youtube_song.url + " | ffmpeg -i pipe:.m4a -c:a libopus -ar 48000 -ac 2 -loglevel quiet pipe:.opus";
@@ -73,7 +77,13 @@ void youtube::handleReply(song_event& event, const dpp::http_request_completion_
     {
         std::lock_guard<std::mutex> guard(token_mutex);
         YOUTUBE_API_KEY = "";
-        // TODO: set timer to reinstate key
+        // TODO: implement getSecondsToMidnight
+        // Resets midnight PST
+        event.bot.start_timer(
+            [&bot = event.bot](const dpp::timer& timer){
+                handleTimer(bot, timer);
+            }, getSecondsToMidnight()
+        );
     }
 }
 
@@ -367,4 +377,39 @@ std::string youtube::getThumbnail(dpp::json& thumbnails)
     else if (thumbnails.contains("default"))
         thumbnail_url = thumbnails["default"]["url"].get<std::string>();
     return thumbnail_url;
+}
+
+void youtube::handleTimer(dpp::cluster& bot, const dpp::timer& timer)
+{
+    std::lock_guard<std::mutex> guard(token_mutex);
+    char* var = get_env_var("YOUTUBE_API_KEY");
+    bot.stop_timer(timer);
+    if (var)
+    {
+        setAPIkey(std::string(var));
+    }
+    else // api key couldnt be found. Reset timer so key can be added to .env and reaqcuired sin reiniciar bot
+        bot.start_timer(
+            [&bot](const dpp::timer& timer){
+                handleTimer(bot, timer);
+            }, getSecondsToMidnight()
+        );
+}
+
+size_t youtube::getSecondsToMidnight()
+{
+    using secs = std::chrono::seconds;
+    using system_clock = std::chrono::system_clock;
+
+    std::time_t nt = system_clock::to_time_t(system_clock::now());
+    std::tm now_tm = *std::localtime(&nt);
+
+    now_tm.tm_hour = 0;
+    now_tm.tm_min = 0;
+    now_tm.tm_sec = 0;
+    now_tm.tm_mday += 1;
+
+    std::chrono::time_point midnight = system_clock::from_time_t(std::mktime(&now_tm));
+    
+    return std::chrono::duration_cast<secs>(midnight - system_clock::now()).count();
 }

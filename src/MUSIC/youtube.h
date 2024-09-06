@@ -33,7 +33,7 @@ struct song_event
 class youtube
 {
     public:
-        static void setAPIkey(std::string API_KEY) { YOUTUBE_API_KEY = API_KEY;}
+        static void setAPIkey(std::string API_KEY) {YOUTUBE_API_KEY = API_KEY;}
         static void parseURL(song_event& event, std::string link);
         static void ytsearch(song_event& event, std::string query);
     private:
@@ -46,6 +46,8 @@ class youtube
         static song createSong(dpp::json& video);
         static std::string convertDuration(std::string old_duration);
         static std::string getThumbnail(dpp::json& thumbnails);
+        static void handleTimer(dpp::cluster& bot, const dpp::timer& timer);
+        static size_t getSecondsToMidnight();
 };  
 
 #endif
