@@ -41,7 +41,6 @@ void music_queue::removeQueue(std::pair<dpp::cluster&, dpp::snowflake> event)
         shared_map_guard.unlock();
         std::unique_lock<std::shared_mutex> write_map_guard(map_mutex);
         music_queue* queue_to_del = res->second;
-        res->second->clear_queue();
         queue_map.erase(res); // delete from map
         // remove cache msg
         dpp::message* msg = getMessage(queue_to_del->getPlayerID());
