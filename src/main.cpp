@@ -56,6 +56,22 @@ int main(int argc, char *argv[])
             }
         });
 
+        // If bot is alone when this fires, start a 5 min disconnect timer
+        bot.on_voice_client_disconnect([&bot](const dpp::voice_client_disconnect_t& event){ discord::onSomeoneLeaves(bot, event); });
+
+        // used to cancel disconnect timer if active
+        bot.on_voice_client_speaking([&bot](const dpp::voice_client_speaking_t& event){ discord::onSomeoneTalks(bot, event); });
+
+        // used to free queue when bot is disconnected from voice
+        bot.on_voice_state_update([&bot](const dpp::voice_state_update_t& event){
+            // only launch thread if state update is from bot being disconnected
+            if (event.state.user_id == bot.me.id && !event.from->get_voice(event.state.guild_id))
+            {
+                std::thread t([event = std::pair<dpp::cluster&, dpp::snowflake>(bot, event.state.guild_id)](){ music_queue::removeQueue(event); });
+                t.detach();
+            }
+         });
+
         // handle button clicks
         bot.on_button_click([](const dpp::button_click_t& event){ music::handle_button_press(event); });
 
