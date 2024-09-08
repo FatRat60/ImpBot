@@ -2,6 +2,8 @@
 #include <oggz/oggz.h>
 
 std::unordered_map<std::string, command_name> discord::command_map;
+std::unordered_map<dpp::snowflake, dpp::timer> discord::bot_disconnect_timers;
+std::mutex discord::timers_mutex;
 
 void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool doRegister, bool doDelete)
 {
@@ -170,6 +172,53 @@ void discord::hello(dpp::discord_voice_client *voice_client)
     }
 }
 
+void discord::onSomeoneLeaves(dpp::cluster& bot, const dpp::voice_client_disconnect_t& event)
+{
+    bot.channel_get(event.voice_client->channel_id,
+        [&bot, vc = event.voice_client](const dpp::confirmation_callback_t& callback){
+            if (!callback.is_error())
+            {
+                dpp::channel vc_channel = std::get<dpp::channel>(callback.value);
+                // only bot is in vc
+                if (vc_channel.is_voice_channel() && vc_channel.get_voice_members().size() == 1)
+                {
+                    std::lock_guard<std::mutex> guard(timers_mutex);
+                    // pause audio
+                    if (vc->is_playing())
+                        vc->pause_audio(true);
+                    dpp::timer timer = bot.start_timer([&bot, vc](const dpp::timer& timer){
+                        std::lock_guard<std::mutex> guard(timers_mutex);
+                        // remove from map
+                        bot_disconnect_timers.erase(vc->channel_id);
+                        // discord_client and disconnect from voice
+                        dpp::discord_client* from = getDiscordClient(bot, vc->server_id);
+                        if (from)
+                            from->disconnect_voice(vc->server_id);
+                            // stop timer
+                        bot.stop_timer(timer);
+                    }, 300);
+                    // place timer in map
+                    bot_disconnect_timers.emplace(vc->channel_id, timer);
+                }
+            }
+        });
+}
+
+void discord::onSomeoneTalks(dpp::cluster& bot, const dpp::voice_client_speaking_t& event)
+{
+    if (bot_disconnect_timers.find(event.voice_client->channel_id) != bot_disconnect_timers.end())
+    {
+        std::cout << "removing timer\n";
+        std::lock_guard<std::mutex> guard(timers_mutex);
+        // resume playing
+        if (event.voice_client->is_paused())
+            event.voice_client->pause_audio(false);
+        dpp::timer timer = bot_disconnect_timers.find(event.voice_client->channel_id)->second;
+        bot.stop_timer(timer);
+        bot_disconnect_timers.erase(event.voice_client->channel_id);
+    }
+}
+
 void discord::join(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
     dpp::guild *g = dpp::find_guild(event.command.guild_id);
@@ -202,13 +251,27 @@ void discord::join(dpp::cluster& bot, const dpp::slashcommand_t& event)
 
 void discord::leave(dpp::cluster& bot, const dpp::slashcommand_t& event)
 {
-    // TODO leave will need to properly handle terminating of music 
-    music_queue* queue = music_queue::getQueue(event.command.guild_id);
-    if (queue)
+    auto voice = event.from->get_voice(event.command.guild_id);
+    if (voice)
     {
-        music::handle_voice_leave(std::pair<dpp::discord_client&, dpp::snowflake>(*event.from, event.command.guild_id));
+        event.from->disconnect_voice(event.command.guild_id);
         event.reply("Bye Bye");
     }
     else
         event.reply("Not in a voice channel");
+}
+
+dpp::discord_client *discord::getDiscordClient(dpp::cluster &bot, dpp::snowflake guild_id)
+{
+    const dpp::shard_list& shards = bot.get_shards();
+    dpp::discord_client* from = nullptr;
+    for (auto shard = shards.begin(); shard != shards.end(); shard++)
+    {
+        if (shard->second->get_voice(guild_id))
+        {
+            from = shard->second;
+            break;
+        }
+    }
+    return from;
 }
