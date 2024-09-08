@@ -60,7 +60,7 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                         song_event song_event = {
                             *event.from->creator, // bot
                             event.command.guild_id, // guild_id
-                            false, // shuffle?
+                            true, // shuffle?
                             event.command.get_issuing_user().get_mention() // history_entry
                         };
                         try
@@ -222,11 +222,6 @@ void music::handle_marker(const dpp::voice_track_marker_t &marker)
     }
 }
 
-void music::handle_voice_leave(std::pair<dpp::discord_client&, dpp::snowflake> event)
-{
-    music_queue::removeQueue(event);
-}
-
 void music::handle_button_press(const dpp::button_click_t &event)
 {
     std::thread t([event](){
@@ -271,7 +266,7 @@ void music::handle_button_press(const dpp::button_click_t &event)
                 doEdit = queue->getPage() == page_type::queue;
             }
             else if (event.custom_id == "leave"){
-                handle_voice_leave(std::pair<dpp::discord_client&, dpp::snowflake>(*event.from, event.command.guild_id));
+                event.from->disconnect_voice(event.command.guild_id);
                 doEdit = false;
             }
             else if (event.custom_id == "stop"){
