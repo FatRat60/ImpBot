@@ -33,8 +33,8 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
     if (doMusic)
     {
         // create queue obj
-        music_queue::getQueue(event.command.guild_id, true);
-        event.reply("Getting player embed...", [event](const dpp::confirmation_callback_t& callback){
+        music_queue* queue = music_queue::getQueue(event.command.guild_id, true);
+        event.reply(queue->get_embed(), [event](const dpp::confirmation_callback_t& callback){
             music_queue* queue = music_queue::getQueue(event.command.guild_id);
             if (!callback.is_error() && queue)
             {
@@ -61,11 +61,15 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                             *event.from->creator, // bot
                             event.command.guild_id, // guild_id
                             true, // shuffle?
-                            event.command.get_issuing_user().get_mention() // history_entry
+                            event.command.get_issuing_user().get_mention(), // history_entry
+                            MAX_PLAYLIST_SIZE
                         };
                         try
                         {
-                            song_event.shuffle = std::get<bool>(event.get_parameter("shuffle"));
+                            int num = std::get<int64_t>(event.get_parameter("length"));
+                            if (num <= MAX_PLAYLIST_SIZE)
+                                song_event.length = num;
+                            song_event.shuffle = !std::get<bool>(event.get_parameter("shuffle"));
                         }
                         catch(const std::exception& e){}
                         
@@ -247,7 +251,19 @@ void music::handle_button_press(const dpp::button_click_t &event)
                         .set_min_length(1)
                         .set_max_length(100)
                         .set_text_style(dpp::text_short)
+                )
+                .add_row()
+                .add_component(
+                    dpp::component()
+                        .set_label("Optional - How many tracks to queue")
+                        .set_id("length")
+                        .set_type(dpp::cot_text)
+                        .set_default_value("100")
+                        .set_min_length(1)
+                        .set_max_length(3)
+                        .set_text_style(dpp::text_short)
                 );
+
                 event.dialog(modal);
                 return;
             }
@@ -292,11 +308,19 @@ void music::handle_form(dpp::cluster& bot, const dpp::form_submit_t& event)
     {
         std::thread t([&bot, event]{
             std::string link = std::get<std::string>(event.components[0].components[0].value);
+            std::string length = std::get<std::string>(event.components[1].components[0].value);
+            u_int8_t numTracks;
+            if (!length.empty() && isdigit(length.front()))
+                numTracks = std::stoi(length);
+            else
+                numTracks = MAX_PLAYLIST_SIZE;
+            
             song_event song_event = {
                 bot, // bot
                 event.command.guild_id, // guild_id
                 true, // shuffle?
-                event.command.get_issuing_user().get_mention() // history_entry
+                event.command.get_issuing_user().get_mention(), // history_entry
+                numTracks
             };
             parseURL(song_event, link);
         });
