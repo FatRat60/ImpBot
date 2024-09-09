@@ -18,12 +18,12 @@ class spotify
         static std::string SPOTIFY_CLIENT_SECRET;
         static std::string SPOTIFY_ACCESS_TOKEN;
         static std::string SPOTIFY_REFRESH_TOKEN;
-        static std::string hasAccessToken(song_event& event, std::string& endpoint, size_t songs);
-        static void makeRequest(song_event& event, std::string endpoint, size_t songs = 0);
-        static void handleReply(song_event& event, const dpp::http_request_completion_t& reply, size_t songs);
+        static std::string hasAccessToken(song_event& event, std::string& endpoint, u_int8_t songs);
+        static void makeRequest(song_event& event, std::string endpoint, u_int8_t songs = 0);
+        static void handleReply(song_event& event, const dpp::http_request_completion_t& reply, u_int8_t songs);
         static void handleTrack(song_event& event, dpp::json& track);
-        static void handlePlaylistItems(song_event& event, dpp::json& playlist, size_t songs);
-        static void handlePlaylist(song_event& event, dpp::json& playlist, size_t songs);
+        static void handlePlaylistItems(song_event& event, dpp::json& playlist, u_int8_t songs);
+        static void handlePlaylist(song_event& event, dpp::json& playlist, u_int8_t songs);
 };
 
 #endif

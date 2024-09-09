@@ -23,7 +23,7 @@ void spotify::parseURL(song_event& event, std::string url)
             std::string type = url.substr(0, slash);
             std::string endpoint;
             if (type == "playlist")
-                endpoint = "/playlists/" + id + "?market=US&fields=" + dpp::utility::url_encode("name,type,tracks(next,items.track(artists.name,name))");
+                endpoint = "/playlists/" + id + "?market=US&fields=" + dpp::utility::url_encode("name,type,tracks(total,next,items.track(artists.name,name))");
             else if (type == "album")
                 endpoint = "/albums/" + id + "?market=US";
             else
@@ -38,7 +38,7 @@ void spotify::parseURL(song_event& event, std::string url)
 hasAccessToken will make http request. Otherwise it makes the POST call to refresh/create token and 
 in that callback will make the http request. Calling thread should do nothing if returns empty str
 */
-std::string spotify::hasAccessToken(song_event& event, std::string& endpoint, size_t songs)
+std::string spotify::hasAccessToken(song_event& event, std::string& endpoint, u_int8_t songs)
 {
     std::lock_guard<std::mutex> guard(token_mutex);
     // no access token
@@ -103,7 +103,7 @@ std::string spotify::hasAccessToken(song_event& event, std::string& endpoint, si
         return SPOTIFY_ACCESS_TOKEN;
 }
 
-void spotify::makeRequest(song_event& event, std::string endpoint, size_t songs)
+void spotify::makeRequest(song_event& event, std::string endpoint, u_int8_t songs)
 {
     std::string access_token = hasAccessToken(event, endpoint, songs);
     if (!access_token.empty())
@@ -115,7 +115,7 @@ void spotify::makeRequest(song_event& event, std::string endpoint, size_t songs)
         );
 }
 
-void spotify::handleReply(song_event& event, const dpp::http_request_completion_t& reply, size_t songs)
+void spotify::handleReply(song_event& event, const dpp::http_request_completion_t& reply, u_int8_t songs)
 {
     if (reply.status == 200)
     {
@@ -128,6 +128,9 @@ void spotify::handleReply(song_event& event, const dpp::http_request_completion_
         else if (json.contains("tracks"))
         {
             std::string name = json["name"].get<std::string>();
+            int pages = json["tracks"]["total"].get<int>() / MAX_RESULTS_PER_PAGE;
+            // multiply by 2 if tracksPerPage if playlist
+            event.tracksPerPage = (event.length / pages) * ((json["type"].get<std::string>() == "playlist") + 1);
             if (name.empty())
                 name = "Unknown";
             handlePlaylist(event.appendHistory(" queued from " + name), json, songs);
@@ -162,7 +165,7 @@ void spotify::handleTrack(song_event& event, dpp::json& track)
     t.detach();
 }
 
-void spotify::handlePlaylistItems(song_event& event, dpp::json& playlistItem, size_t songs)
+void spotify::handlePlaylistItems(song_event& event, dpp::json& playlistItem, u_int8_t songs)
 {
     song_event event_zerod = {
         event.bot, event.guild_id,
@@ -174,18 +177,20 @@ void spotify::handlePlaylistItems(song_event& event, dpp::json& playlistItem, si
         auto rng_seed = std::chrono::system_clock::now().time_since_epoch().count();
         std::shuffle(playlistItem["items"].begin(), playlistItem["items"].end(), std::default_random_engine(rng_seed));
     }
+    u_int8_t songs_this_page = 0;
     // iterate through items
-    for (dpp::json track : playlistItem["items"])
+    for (auto track = playlistItem["items"].begin(); track != playlistItem["items"].end() && songs_this_page < event.tracksPerPage; track++)
     {
-        if (track.contains("name") || track.contains("track"))
+        if ((*track).contains("name") || (*track).contains("track"))
         {
-            songs++;
-            handleTrack(event_zerod, track.contains("name") ? track : track["track"]);
+            songs_this_page++;
+            handleTrack(event_zerod, (*track).contains("name") ? *track : (*track)["track"]);
         }
     }
+    songs += songs_this_page;
 
     // go to next page if it exists
-    if (!playlistItem["next"].is_null())
+    if (!playlistItem["next"].is_null() && event.length - songs > event.tracksPerPage)
     {
         std::string next = playlistItem["next"].get<std::string>();
         if (!playlistItem.contains("href"))
@@ -203,7 +208,7 @@ void spotify::handlePlaylistItems(song_event& event, dpp::json& playlistItem, si
     }
 }
 
-void spotify::handlePlaylist(song_event& event, dpp::json& playlist, size_t songs)
+void spotify::handlePlaylist(song_event& event, dpp::json& playlist, u_int8_t songs)
 {
     song_event event_zerod = {
         event.bot, event.guild_id,
@@ -215,22 +220,25 @@ void spotify::handlePlaylist(song_event& event, dpp::json& playlist, size_t song
         auto rng_seed = std::chrono::system_clock::now().time_since_epoch().count();
         std::shuffle(playlist["tracks"]["items"].begin(), playlist["tracks"]["items"].end(), std::default_random_engine(rng_seed));
     }
+    u_int8_t songs_this_page = 0;
     // iterate through items
-    for (dpp::json track : playlist["tracks"]["items"])
+    for (auto track = playlist["tracks"]["items"].begin(); track != playlist["tracks"]["items"].end() && songs_this_page < event.tracksPerPage; track++)
     {
-        if (track.contains("name") || track.contains("track"))
+        if ((*track).contains("name") || (*track).contains("track"))
         {
-            songs++;
-            handleTrack(event_zerod, track.contains("name") ? track : track["track"]);
+            songs_this_page++;
+            handleTrack(event_zerod, (*track).contains("name") ? *track : (*track)["track"]);
         }
     }
+    songs += songs_this_page;
 
     // go to next page if it exists
-    if (!playlist["tracks"]["next"].is_null())
+    if (!playlist["tracks"]["next"].is_null() && event.length - songs > event.tracksPerPage)
     {
         std::string next = playlist["tracks"]["next"].get<std::string>();
         if (playlist["type"].get<std::string>() == "playlist")
         {
+            event.tracksPerPage /= 2;
             size_t equals = next.rfind('=');
             next = next.substr(0, equals+1) + dpp::utility::url_encode("next,items(track(name,artists.name))");
         }

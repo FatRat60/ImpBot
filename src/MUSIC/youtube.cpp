@@ -15,7 +15,7 @@ extern "C" {
 std::string youtube::YOUTUBE_API_KEY;
 std::mutex youtube::token_mutex;
 
-void youtube::makeRequest(song_event& event, std::string endpoint, size_t songs)
+void youtube::makeRequest(song_event& event, std::string endpoint, u_int8_t songs)
 {
     std::lock_guard<std::mutex> guard(token_mutex);
     // call api if key exists
@@ -50,7 +50,7 @@ void youtube::makeRequest(song_event& event, std::string endpoint, size_t songs)
     }
 }
 
-void youtube::handleReply(song_event& event, const dpp::http_request_completion_t& reply, size_t songs)
+void youtube::handleReply(song_event& event, const dpp::http_request_completion_t& reply, u_int8_t songs)
 {
     // we are bing. parse body and either call handleVideo or handlePlaylist
     if (reply.status == 200)
@@ -65,10 +65,21 @@ void youtube::handleReply(song_event& event, const dpp::http_request_completion_
                 handleVideo(event, json["items"][0]);
         }
         else if (response_type == "youtube#playlistListResponse")
+        {
+            if (event.shuffle)
+            {
+                int totalSongs = json["items"][0]["contentDetails"]["itemCount"].get<int>();
+                int pages = totalSongs / MAX_RESULTS_PER_PAGE;
+                event.tracksPerPage = event.length / pages;
+            }
+            else
+                event.tracksPerPage = MAX_RESULTS_PER_PAGE;
             makeRequest(event.appendHistory(" queued from " + json["items"][0]["snippet"]["title"].get<std::string>()),
-                std::string(YOUTUBE_ENDPOINT) + "/playlistItems?part=snippet&maxResults=50&playlistId=" + json["items"][0]["id"].get<std::string>()
+                std::string(YOUTUBE_ENDPOINT) + "/playlistItems?part=snippet&maxResults="
+                + std::to_string(MAX_RESULTS_PER_PAGE) + "&playlistId=" + json["items"][0]["id"].get<std::string>()
                 + "&key="
             );
+        }
         else
             handlePlaylist(event, json, songs);
     }
@@ -136,7 +147,7 @@ void youtube::handleVideo(song_event& event, dpp::json& video)
     }
 }
 
-void youtube::handlePlaylist(song_event& event, dpp::json& playlist, size_t songs)
+void youtube::handlePlaylist(song_event& event, dpp::json& playlist, u_int8_t songs)
 {
     // json from youtube api
     if (playlist.contains("items"))
@@ -147,25 +158,27 @@ void youtube::handlePlaylist(song_event& event, dpp::json& playlist, size_t song
             auto rng_seed = std::chrono::system_clock::now().time_since_epoch().count();
             std::shuffle(playlist["items"].begin(), playlist["items"].end(), std::default_random_engine(rng_seed));
         }
+        u_int8_t songs_this_page = 0;
         // iterate through each video
         song_event event_zerod = {
             event.bot, event.guild_id,
             event.shuffle, ""
         };
-        for (dpp::json video : playlist["items"])
+        for (auto video = playlist["items"].begin(); video != playlist["items"].end() && songs_this_page < event.tracksPerPage; video++)
         {
             // dont waste out api tokens :) no thumbnails means priv or deleted usually
-            if (!video["snippet"]["thumbnails"].empty())
+            if (!(*video)["snippet"]["thumbnails"].empty())
             {
-                songs++;
+                songs_this_page++;
                 makeRequest(event_zerod, 
                 std::string(YOUTUBE_ENDPOINT) + "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") 
-                + "&id=" + video["snippet"]["resourceId"]["videoId"].get<std::string>() + "&key=");
+                + "&id=" + (*video)["snippet"]["resourceId"]["videoId"].get<std::string>() + "&key=");
             }
         }
+        songs += songs_this_page;
 
         // next page of songs to add
-        if (playlist.contains("nextPageToken"))
+        if (playlist.contains("nextPageToken") && event.length - songs > event.tracksPerPage)
         {
             makeRequest(event, 
                 std::string(YOUTUBE_ENDPOINT) + "/playlistItems?part=snippet&playlistId=" 
@@ -189,7 +202,7 @@ void youtube::handlePlaylist(song_event& event, dpp::json& playlist, size_t song
         if (pipe)
         {
             std::array<char, 512> buffer;
-            while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr)
+            while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr && num_songs < event.length)
             {
                 dpp::json json = dpp::json::parse(buffer.data());
                 song new_song = createSong(json);
@@ -267,12 +280,12 @@ void youtube::parseURL(song_event& event, std::string link)
     // /playlist?list=<id>
     if (type == "playlist")
     {
-        endpoint += "/playlists?part=snippet&id=" + id + "&key=";
+        endpoint += "/playlists?part=";
     }
     // ?v=<id>
     else if (type == "watch")
     {
-        endpoint += "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") + "&id=" + id + "&key=";
+        endpoint += "/videos?part=";
     }
     // either /live/<id>? or /<id>?
     else
@@ -281,8 +294,9 @@ void youtube::parseURL(song_event& event, std::string link)
         size_t slash2 = type.find('/');
         if (slash2 == std::string::npos)
             id = type.substr(slash2+1);
-        endpoint += "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") + "&id=" + id + "&key=";
+        endpoint += "/videos?part=";
     }
+    endpoint += dpp::utility::url_encode("snippet,contentDetails") + "&id=" + id + "&key=";
     makeRequest(event, endpoint);
 }
 
