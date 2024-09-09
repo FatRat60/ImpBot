@@ -119,7 +119,6 @@ bool music_queue::enqueue(song &song_to_add)
         });
         t.detach();
     }
-    std::cout << "Queued song\n";
     return queue.size() == 1;
 }
 
