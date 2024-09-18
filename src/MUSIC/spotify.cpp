@@ -237,7 +237,6 @@ void spotify::handlePlaylist(song_event& event, dpp::json& playlist, u_int8_t so
         std::string next = playlist["tracks"]["next"].get<std::string>();
         if (playlist["type"].get<std::string>() == "playlist")
         {
-            event.tracksPerPage /= 2;
             size_t equals = next.rfind('=');
             next = next.substr(0, equals+1) + dpp::utility::url_encode("next,items(track(name,artists.name))");
         }
