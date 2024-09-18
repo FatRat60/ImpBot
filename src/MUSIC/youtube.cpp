@@ -66,14 +66,7 @@ void youtube::handleReply(song_event& event, const dpp::http_request_completion_
         }
         else if (response_type == "youtube#playlistListResponse")
         {
-            if (event.shuffle)
-            {
-                int totalSongs = json["items"][0]["contentDetails"]["itemCount"].get<int>();
-                int pages = totalSongs / MAX_RESULTS_PER_PAGE;
-                event.tracksPerPage = event.length / pages;
-            }
-            else
-                event.tracksPerPage = MAX_RESULTS_PER_PAGE;
+            getSongsPerPage(event, json["items"][0]["contentDetails"]["itemCount"].get<int>());
             makeRequest(event.appendHistory(" queued from " + json["items"][0]["snippet"]["title"].get<std::string>()),
                 std::string(YOUTUBE_ENDPOINT) + "/playlistItems?part=snippet&maxResults="
                 + std::to_string(MAX_RESULTS_PER_PAGE) + "&playlistId=" + json["items"][0]["id"].get<std::string>()
@@ -158,27 +151,26 @@ void youtube::handlePlaylist(song_event& event, dpp::json& playlist, u_int8_t so
             auto rng_seed = std::chrono::system_clock::now().time_since_epoch().count();
             std::shuffle(playlist["items"].begin(), playlist["items"].end(), std::default_random_engine(rng_seed));
         }
-        u_int8_t songs_this_page = 0;
+        u_int8_t songs_start = songs;
         // iterate through each video
         song_event event_zerod = {
             event.bot, event.guild_id,
             event.shuffle, ""
         };
-        for (auto video = playlist["items"].begin(); video != playlist["items"].end() && songs_this_page < event.tracksPerPage; video++)
+        for (auto video = playlist["items"].begin(); video != playlist["items"].end() && songs - songs_start < event.tracksPerPage && songs < event.length; video++)
         {
             // dont waste out api tokens :) no thumbnails means priv or deleted usually
             if (!(*video)["snippet"]["thumbnails"].empty())
             {
-                songs_this_page++;
+                songs++;
                 makeRequest(event_zerod, 
                 std::string(YOUTUBE_ENDPOINT) + "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") 
                 + "&id=" + (*video)["snippet"]["resourceId"]["videoId"].get<std::string>() + "&key=");
             }
         }
-        songs += songs_this_page;
 
         // next page of songs to add
-        if (playlist.contains("nextPageToken") && event.length - songs > event.tracksPerPage)
+        if (playlist.contains("nextPageToken") && songs < event.length)
         {
             makeRequest(event, 
                 std::string(YOUTUBE_ENDPOINT) + "/playlistItems?part=snippet&playlistId=" 
@@ -315,6 +307,29 @@ void youtube::ytsearch(song_event& event, std::string query)
             makeRequest(event, std::string(YOUTUBE_ENDPOINT) + "/videos?part=" + dpp::utility::url_encode("snippet,contentDetails") + "&id=" + id + "&key=");
         }
     }
+}
+
+void youtube::getSongsPerPage(song_event& event, size_t totalSongs)
+{
+    if (event.shuffle)
+    {
+        div_t div_res = std::div(totalSongs, MAX_RESULTS_PER_PAGE);
+        size_t pages = div_res.quot + div_res.rem != 0;
+        if (pages > MAX_PAGES)
+        {
+            pages = MAX_PAGES;
+            div_res.quot = MAX_PAGES;
+            div_res.rem = 0;
+        }
+        event.tracksPerPage = (event.length / pages) + 1; // Round up
+        if (div_res.rem != 0 && event.tracksPerPage > div_res.rem)
+        {
+            size_t length_minus_last_page = event.length - div_res.rem;
+            event.tracksPerPage = (length_minus_last_page / div_res.quot) + 1;
+        }
+    }
+    else
+        event.tracksPerPage = MAX_RESULTS_PER_PAGE;
 }
 
 std::string youtube::convertDuration(std::string old_duration)

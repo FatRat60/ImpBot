@@ -11,6 +11,7 @@
 #define YUI "resources/yaharo.opus"
 #define MAX_PLAYLIST_SIZE 100
 #define MAX_RESULTS_PER_PAGE 50
+#define MAX_PAGES 10
 
 struct song_event
 {
@@ -40,6 +41,7 @@ class youtube
         static void setAPIkey(std::string API_KEY) {YOUTUBE_API_KEY = API_KEY;}
         static void parseURL(song_event& event, std::string link);
         static void ytsearch(song_event& event, std::string query);
+        static void getSongsPerPage(song_event& event, size_t totalSongs);
     private:
         static std::string YOUTUBE_API_KEY;
         static std::mutex token_mutex;
