@@ -128,9 +128,9 @@ void spotify::handleReply(song_event& event, const dpp::http_request_completion_
         else if (json.contains("tracks"))
         {
             std::string name = json["name"].get<std::string>();
-            int pages = json["tracks"]["total"].get<int>() / MAX_RESULTS_PER_PAGE;
+            youtube::getSongsPerPage(event, json["tracks"]["total"].get<int>());
             // multiply by 2 if tracksPerPage if playlist
-            event.tracksPerPage = (event.length / pages) * ((json["type"].get<std::string>() == "playlist") + 1);
+            event.tracksPerPage *= ((json["type"].get<std::string>() == "playlist") + 1);
             if (name.empty())
                 name = "Unknown";
             handlePlaylist(event.appendHistory(" queued from " + name), json, songs);
@@ -155,7 +155,7 @@ void spotify::handleTrack(song_event& event, dpp::json& track)
 {
     // build search query for yt : "<track name> <artist names>"
     std::string query;
-    query += track["name"];
+    query += track["name"].get<std::string>();
     if (track["artists"].size() > 0)
     {
         std::string name = track["artists"][0]["name"];
@@ -177,20 +177,19 @@ void spotify::handlePlaylistItems(song_event& event, dpp::json& playlistItem, u_
         auto rng_seed = std::chrono::system_clock::now().time_since_epoch().count();
         std::shuffle(playlistItem["items"].begin(), playlistItem["items"].end(), std::default_random_engine(rng_seed));
     }
-    u_int8_t songs_this_page = 0;
+    u_int8_t songs_start = songs;
     // iterate through items
-    for (auto track = playlistItem["items"].begin(); track != playlistItem["items"].end() && songs_this_page < event.tracksPerPage; track++)
+    for (auto track = playlistItem["items"].begin(); track != playlistItem["items"].end() && songs - songs_start < event.tracksPerPage && songs < event.length; track++)
     {
-        if ((*track).contains("name") || (*track).contains("track"))
+        if (((*track).contains("name") && !(*track)["name"].is_null()) || ((*track).contains("track") && !(*track)["track"].is_null()))
         {
-            songs_this_page++;
+            songs++;
             handleTrack(event_zerod, (*track).contains("name") ? *track : (*track)["track"]);
         }
     }
-    songs += songs_this_page;
 
     // go to next page if it exists
-    if (!playlistItem["next"].is_null() && event.length - songs > event.tracksPerPage)
+    if (!playlistItem["next"].is_null() && songs < event.length)
     {
         std::string next = playlistItem["next"].get<std::string>();
         if (!playlistItem.contains("href"))
@@ -224,7 +223,7 @@ void spotify::handlePlaylist(song_event& event, dpp::json& playlist, u_int8_t so
     // iterate through items
     for (auto track = playlist["tracks"]["items"].begin(); track != playlist["tracks"]["items"].end() && songs_this_page < event.tracksPerPage; track++)
     {
-        if ((*track).contains("name") || (*track).contains("track"))
+        if (((*track).contains("name") && !(*track)["name"].is_null()) || ((*track).contains("track") && !(*track)["track"].is_null()))
         {
             songs_this_page++;
             handleTrack(event_zerod, (*track).contains("name") ? *track : (*track)["track"]);
