@@ -69,7 +69,7 @@ void music::play(dpp::cluster& bot, const dpp::slashcommand_t& event)
                             int num = std::get<int64_t>(event.get_parameter("length"));
                             if (num <= MAX_PLAYLIST_SIZE)
                                 song_event.length = num;
-                            song_event.shuffle = !std::get<bool>(event.get_parameter("shuffle"));
+                            song_event.shuffle = std::get<bool>(event.get_parameter("shuffle"));
                         }
                         catch(const std::exception& e){}
                         
