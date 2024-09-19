@@ -9,6 +9,8 @@
 #include <queue>
 #include <thread>
 
+#define TEAM_TOBY 388158533004165121
+
 enum command_name
 {
     PING,

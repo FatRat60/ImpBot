@@ -12,6 +12,7 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
     {
         bot.log(dpp::loglevel::ll_info, "Deleting Commands");
         bot.global_bulk_command_delete();
+        bot.guild_bulk_command_delete(TEAM_TOBY);
     }
 
     // register commands
@@ -28,7 +29,7 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
         ).add_option(
             dpp::command_option(dpp::co_integer, "length", "how many songs to queue")
         ).add_option(
-            dpp::command_option(dpp::co_boolean, "no shuffle", "whether to shuffle")
+            dpp::command_option(dpp::co_boolean, "shuffle", "whether to shuffle")
         );
         dpp::slashcommand pausecmd("pause", "Pause the current song", bot.me.id);
         dpp::slashcommand stopcmd("stop", "stops current song and clears queue", bot.me.id);
@@ -38,6 +39,8 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
         removecmd.add_option(
             dpp::command_option(dpp::co_string, "number", "Track number to remove. Seperate by commas and use 1:5 to denote a range", true)
         );
+        dpp::slashcommand shufflecmd("shuffle", "Shuffles the queue", bot.me.id);
+
         dpp::slashcommand startcmd("start", "Starts the designated game server", bot.me.id);
         startcmd.add_option(
             dpp::command_option(dpp::co_string, "name", "type of server to start", true).set_auto_complete(true)
@@ -47,17 +50,19 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
             dpp::command_option(dpp::co_boolean, "restart", "If true, will restart the server after shutdown")
         );
         dpp::slashcommand ipcmd("ip", "I'll slide into your DMs with the server ip <3", bot.me.id);
-        dpp::slashcommand shufflecmd("shuffle", "Shuffles the queue", bot.me.id);
 
-        const std::vector<dpp::slashcommand> commands = { 
+        const std::vector<dpp::slashcommand> global_commands = { 
             pingcmd, joincmd, leavecmd, playcmd,
             pausecmd, stopcmd, skipcmd, queuecmd,
-            removecmd, startcmd, terminatecmd, ipcmd,
-            shufflecmd
+            removecmd, shufflecmd
         };
-        
+
+        const std::vector<dpp::slashcommand> guild_commands = {
+            startcmd, terminatecmd, ipcmd
+        };
     
-        bot.global_bulk_command_create(commands);
+        bot.global_bulk_command_create(global_commands);
+        bot.guild_bulk_command_create(guild_commands, TEAM_TOBY);
     }
 
     // populate map
