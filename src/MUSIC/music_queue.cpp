@@ -75,7 +75,6 @@ void music_queue::updateMessage(std::pair<dpp::cluster&, dpp::snowflake> event)
         dpp::message* msg = player_embed_cache.find(queue->getPlayerID());
         if (msg)
         {
-            std::cout << "Updating embed\n";
             // get new embed
             dpp::message new_msg = queue->get_embed();
             // copy components and embed over
@@ -96,7 +95,6 @@ void music_queue::setVoiceClient(dpp::discord_voice_client *voice)
     guard.unlock();
     // notify waiting threads that vc is ready
     vc_ready.notify_all();
-    std::cout << "Notified\n";
 }
 
 /*If first song: Download and send song to discord, then add to queue
@@ -464,7 +462,6 @@ dpp::message music_queue::get_playback_embed()
 
 void music_queue::addHistory(std::string new_entry)
 {
-    std::cout << "adding history\n";
     std::lock_guard<std::mutex> guard(history_mutex);
 
     if (history.size() == MAX_HISTORY_ENTRIES)
