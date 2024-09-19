@@ -294,6 +294,7 @@ void youtube::parseURL(song_event& event, std::string link)
 
 void youtube::ytsearch(song_event& event, std::string query)
 {
+    sanitizeQuery(query);
     std::string cmd = "yt-dlp -q --no-warnings --flat-playlist --no-playlist --print \"id\" \"ytsearch1:" + query + "\"";
     char buffer[50];
     std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
@@ -441,4 +442,11 @@ size_t youtube::getSecondsToMidnight()
     std::chrono::time_point midnight = system_clock::from_time_t(std::mktime(&now_tm));
     
     return std::chrono::duration_cast<secs>(midnight - system_clock::now()).count();
+}
+
+void youtube::sanitizeQuery(std::string &query)
+{
+    size_t ind = 0;
+    while ((ind = query.find('"', ind)) != std::string::npos)
+        query.replace(ind, 1, "");
 }

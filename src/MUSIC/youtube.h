@@ -54,6 +54,7 @@ class youtube
         static std::string getThumbnail(dpp::json& thumbnails);
         static void handleTimer(dpp::cluster& bot, const dpp::timer& timer);
         static size_t getSecondsToMidnight();
+        static void sanitizeQuery(std::string& query);
 };  
 
 #endif
