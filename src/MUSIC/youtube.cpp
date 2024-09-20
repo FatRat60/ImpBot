@@ -312,7 +312,7 @@ void youtube::ytsearch(song_event& event, std::string query)
 
 void youtube::getSongsPerPage(song_event& event, size_t totalSongs)
 {
-    if (event.shuffle)
+    if (event.shuffle && event.length < totalSongs)
     {
         div_t div_res = std::div(totalSongs, MAX_RESULTS_PER_PAGE);
         size_t pages = div_res.quot + div_res.rem != 0;
