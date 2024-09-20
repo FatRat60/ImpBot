@@ -48,7 +48,7 @@ class music_queue
         static dpp::message* getMessage(dpp::snowflake msg_id){ return player_embed_cache.find(msg_id); }
         static void removeMessage(dpp::snowflake msg_id);
         static void updateMessage(std::pair<dpp::cluster&, dpp::snowflake> event);
-        music_queue() { stopLivestream.store(false); page_number.store(0); vc = nullptr; page.store(playback_control); player_id.store(0); didShuffle = false; }
+        music_queue() { stopLivestream.store(false); page_number.store(0); vc = nullptr; page.store(playback_control); player_id.store(0); dead_songs = 0; }
         void setPlayerID(dpp::snowflake new_id) { player_id.store(new_id); }
         dpp::snowflake getPlayerID(){ return player_id.load(); }
         void setVoiceClient(dpp::discord_voice_client* voice);
@@ -77,7 +77,7 @@ class music_queue
         std::deque<song> queue;
         std::deque<std::string> history;
         std::atomic_bool stopLivestream;
-        bool didShuffle;
+        size_t dead_songs;
         std::atomic<page_type> page; // page_type
         std::atomic_size_t page_number; // size_t
         std::atomic<dpp::snowflake> player_id; // dpp::snowflake
