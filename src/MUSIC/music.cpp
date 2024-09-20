@@ -170,27 +170,11 @@ void music::remove(const dpp::slashcommand_t &event)
         if (queue)
         {
             std::string numbers = std::get<std::string>(event.get_parameter("number"));
+            size_t start, end;
+            parseRemove(numbers, start, end);
             // parse start and end
-            std::string first, second;
-            size_t colon = numbers.find(':');
-            if (colon != std::string::npos)
+            if (start != std::string::npos)
             {
-                first = numbers.substr(0, colon);
-                second = numbers.substr(colon);
-                second.replace(0, 1, "");
-            }
-            // sanitize them
-            if (!first.empty() && isdigit(first[0]))
-            {
-                size_t start = std::stoul(first);
-                size_t end = std::string::npos;
-                if (!second.empty())
-                {
-                    if (isdigit(second[0]))
-                        end = std::stoul(second);
-                    else
-                        end = start+1;
-                }
                 if (queue->remove_from_queue(start, end))
                 {
                     event.reply("removed track(s) from queue");
@@ -273,6 +257,21 @@ void music::handle_button_press(const dpp::button_click_t &event)
                 queue->changePageNumber(1);
             else if (event.custom_id == "prev")
                 queue->changePageNumber(-1);
+            else if (event.custom_id == "remove")
+            {
+                dpp::interaction_modal_response modal("remove", "Enter track number or range to remove");
+                modal.add_component(
+                    dpp::component()
+                        .set_label("Enter track number or provide range")
+                        .set_id("num")
+                        .set_type(dpp::cot_text)
+                        .set_min_length(1)
+                        .set_max_length(100)
+                        .set_text_style(dpp::text_short)
+                );
+                event.dialog(modal);
+                return;
+            }
             else if (event.custom_id == "pause"){
                 queue->pause();
                 doEdit = false;
@@ -326,6 +325,19 @@ void music::handle_form(dpp::cluster& bot, const dpp::form_submit_t& event)
         });
         t.detach();
     }
+    else if (event.custom_id == "remove")
+    {
+        std::thread t([&bot, event](){
+            std::string num_str = std::get<std::string>(event.components[0].components[0].value);
+            size_t start, end;
+            parseRemove(num_str, start, end);
+            music_queue* queue = music_queue::getQueue(event.command.guild_id);
+            if (queue && start != std::string::npos)
+                if (queue->remove_from_queue(start, end))
+                    music_queue::updateMessage(std::pair<dpp::cluster&, dpp::snowflake>(bot, event.command.guild_id));
+        });
+        t.detach();
+    }
     event.reply();
 }
 
@@ -360,6 +372,41 @@ void music::parseURL(song_event& event, std::string search_term)
         if (queue)
             queue->addHistory(event.history_entry + " searched for " + search_term);
         youtube::ytsearch(event.zeroHistory(), search_term);
+    }
+}
+
+void music::parseRemove(std::string& num_str, size_t& start, size_t& end)
+{
+    std::string first, second;
+    size_t colon = num_str.find(':');
+    if (colon != std::string::npos)
+    {
+        first = num_str.substr(0, colon);
+        second = num_str.substr(colon);
+        second.replace(0, 1, "");
+        if (!first.empty() && isdigit(first[0]))
+            start = std::stoul(first);
+        else
+            start = 1;
+        if (!second.empty())
+        {
+            if (isdigit(second[0]))
+                end = std::stoul(second);
+            else
+                end = start + 1;
+        }
+        else
+            end = std::string::npos;
+    }
+    else
+    {
+        if (!num_str.empty() && isdigit(num_str[0]))
+        {
+            start = std::stoul(num_str);
+            end = start+1;
+        }
+        else
+            start = std::string::npos;
     }
 }
 

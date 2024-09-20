@@ -19,6 +19,7 @@ class music
         static void handle_form(dpp::cluster& bot, const dpp::form_submit_t& event);
     private:
         static void parseURL(song_event& event, std::string search_term);
+        static void parseRemove(std::string& num_str, size_t& start, size_t& end);
 };
 
 
