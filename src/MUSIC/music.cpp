@@ -259,12 +259,13 @@ void music::handle_button_press(const dpp::button_click_t &event)
                 queue->changePageNumber(-1);
             else if (event.custom_id == "remove")
             {
-                dpp::interaction_modal_response modal("remove", "Enter track number or range to remove");
+                dpp::interaction_modal_response modal("remove", "Remove Songs");
                 modal.add_component(
                     dpp::component()
                         .set_label("Enter track number or provide range")
                         .set_id("num")
                         .set_type(dpp::cot_text)
+                        .set_default_value("e.g. 1, 1:4, :5, 1:")
                         .set_min_length(1)
                         .set_max_length(100)
                         .set_text_style(dpp::text_short)
