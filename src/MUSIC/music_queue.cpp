@@ -256,6 +256,7 @@ dpp::message music_queue::get_embed()
                 .set_id("leave")
                 .set_emoji(dpp::unicode_emoji::skull)
                 .set_style(dpp::cos_danger)
+                .set_disabled(true)
         )
     );
 
@@ -295,13 +296,8 @@ dpp::message music_queue::get_queue_embed()
         )
         .set_timestamp(time(0));
     
-    if (queue.size() > 0)
+    if (queue.size() > 1)
     {
-        // playing now
-        q_embed.add_field("Playing Now:", queue.front().title + "\n[" + queue.front().duration + "]");
-        q_embed.set_thumbnail(queue.front().thumbnail);
-
-        q_embed.add_field("", "");
         q_embed.add_field("Up Next:", "");
         int i,j;
         // write inline fields
@@ -338,6 +334,12 @@ dpp::message music_queue::get_queue_embed()
             dpp::component()
                 .set_emoji(dpp::unicode_emoji::arrows_clockwise)
                 .set_id("shuffle")
+        )
+        .add_component(
+            dpp::component()
+                .set_label("Remove")
+                .set_id("remove")
+                .set_disabled(queue.size() < 2)
         )
     );
 }
