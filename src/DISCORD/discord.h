@@ -10,6 +10,7 @@
 #include <thread>
 
 #define TEAM_TOBY 388158533004165121
+#define HELP_FILE std::string("resources/help.txt")
 
 enum command_name
 {
@@ -25,7 +26,8 @@ enum command_name
     START,
     TERMINATE,
     IP,
-    SHUFFLE
+    SHUFFLE,
+    HELP
 };
 
 class discord
@@ -44,6 +46,7 @@ class discord
         static void ping(const dpp::slashcommand_t& event);
         static void join(dpp::cluster& bot, const dpp::slashcommand_t& event);
         static void leave(dpp::cluster& bot, const dpp::slashcommand_t& event);
+        static void help(const dpp::slashcommand_t& event);
         static dpp::discord_client* getDiscordClient(dpp::cluster& bot, dpp::snowflake guild_id);
 };
 

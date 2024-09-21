@@ -40,6 +40,7 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
             dpp::command_option(dpp::co_string, "number", "Track number to remove. Seperate by commas and use 1:5 to denote a range", true)
         );
         dpp::slashcommand shufflecmd("shuffle", "Shuffles the queue", bot.me.id);
+        dpp::slashcommand helpcmd("help", "Explains bot commands", bot.me.id);
 
         dpp::slashcommand startcmd("start", "Starts the designated game server", bot.me.id);
         startcmd.add_option(
@@ -54,7 +55,7 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
         const std::vector<dpp::slashcommand> global_commands = { 
             pingcmd, joincmd, leavecmd, playcmd,
             pausecmd, stopcmd, skipcmd, queuecmd,
-            removecmd, shufflecmd
+            removecmd, shufflecmd, helpcmd
         };
 
         const std::vector<dpp::slashcommand> guild_commands = {
@@ -82,6 +83,7 @@ void discord::register_events(dpp::cluster& bot, const dpp::ready_t& event, bool
         command_map.insert({"terminate", TERMINATE});
         command_map.insert({"ip", IP});
         command_map.insert({"shuffle", SHUFFLE});
+        command_map.insert({"help", HELP});
     }
 }
 
@@ -141,6 +143,9 @@ void discord::handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event)
             break;
         case SHUFFLE:
             music::shuffle(event);
+            break;
+        case HELP:
+            help(event);
             break;
         }
     }
@@ -266,6 +271,14 @@ void discord::leave(dpp::cluster& bot, const dpp::slashcommand_t& event)
     }
     else
         event.reply("Not in a voice channel");
+}
+
+void discord::help(const dpp::slashcommand_t& event)
+{
+    auto user = event.command.get_issuing_user();
+    dpp::message msg("Since you're braindead here's some help:");
+    event.from->creator->direct_message_create(user.id,
+        msg.add_file("help", dpp::utility::read_file(HELP_FILE)));
 }
 
 dpp::discord_client *discord::getDiscordClient(dpp::cluster &bot, dpp::snowflake guild_id)
