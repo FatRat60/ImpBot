@@ -279,6 +279,7 @@ void discord::help(const dpp::slashcommand_t& event)
     dpp::message msg("Since you're braindead here's some help:");
     event.from->creator->direct_message_create(user.id,
         msg.add_file("help", dpp::utility::read_file(HELP_FILE)));
+    event.reply("Check DM!");
 }
 
 dpp::discord_client *discord::getDiscordClient(dpp::cluster &bot, dpp::snowflake guild_id)
