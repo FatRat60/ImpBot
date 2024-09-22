@@ -24,11 +24,11 @@ A discord bot written in C++/C mostly for private use by myself and various othe
 
 ## Screenshots
 
-![Empty Player Embed]()
-![Player Embed]()
-![Queue Embed]()
-![History Embed]()
-![Add Music Modal]()
+![Empty Player Embed](/imgs/empty_player_embed.jpg)
+![Player Embed](/imgs/Player_embed.jpg)
+![Queue Embed](/imgs/queue_embed.jpg)
+![History Embed](/imgs/history_embed.jpg)
+![Add Music Modal](/imgs/add_music_modal.jpg)
 
 
 ## Libraries Used
