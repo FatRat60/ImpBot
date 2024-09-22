@@ -202,7 +202,7 @@ void music::handle_marker(const dpp::voice_track_marker_t &marker)
             music_queue* queue = music_queue::getQueue(marker.voice_client->server_id);
             if (queue)
             {
-                queue->go_next();
+                queue->next();
                 music_queue::updateMessage(std::pair<dpp::cluster&, dpp::snowflake>(*marker.voice_client->creator, marker.voice_client->server_id));
             }
         });
