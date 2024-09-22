@@ -126,8 +126,6 @@ After streaming to discord, download next song if exists to resources/next.pcm
 If no track is next, return false, else true*/
 bool music_queue::go_next()
 {
-    std::lock_guard<std::mutex> guard(queue_mutex);
-
     while (dead_songs > 0)
     {
         vc->skip_to_next_marker();
@@ -160,6 +158,8 @@ bool music_queue::go_next()
 
 bool music_queue::skip()
 {
+    std::lock_guard<std::mutex> guard(queue_mutex);
+
     if (!queue.empty() && queue.front().type == livestream)
     {
         // need to signal flag to end livestream. Afterwhich a marker will get added and trigger
@@ -175,9 +175,16 @@ bool music_queue::skip()
     }
 }
 
+bool music_queue::next()
+{
+    std::lock_guard<std::mutex> guard(queue_mutex);
+    return go_next();
+}
+
 void music_queue::clear_queue()
 {
     std::lock_guard<std::mutex> guard(queue_mutex);
+    dead_songs = 0;
     stopLivestream.store(true); // terminate livestream
     queue.clear();
     vc->stop_audio();
@@ -498,6 +505,7 @@ void music_queue::handle_download(std::string url)
         std::unique_lock<std::mutex> guard(queue_mutex);
         vc_ready.wait(guard);
     }
+    std::cout << "downloading " << url << "\n";
 
     dpp::discord_voice_client* vc = this->vc;
     std::string cmd = "yt-dlp -f 140/139/234/233 -q --no-warnings -o - --no-playlist " + url + " | ffmpeg -i pipe:.m4a -f s16le -ar 48000 -ac 2 -loglevel quiet pipe:.pcm";

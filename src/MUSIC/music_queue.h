@@ -53,8 +53,8 @@ class music_queue
         dpp::snowflake getPlayerID(){ return player_id.load(); }
         void setVoiceClient(dpp::discord_voice_client* voice);
         bool enqueue(song& song_to_add);
-        bool go_next();
         bool skip();
+        bool next();
         void clear_queue();
         bool remove_from_queue(size_t start, size_t end);
         dpp::message get_embed();
@@ -85,6 +85,7 @@ class music_queue
         dpp::message get_queue_embed();
         dpp::message get_history_embed();
         dpp::message get_playback_embed();
+        bool go_next();
 };
 
 #endif
