@@ -2,9 +2,6 @@
 #include <string>
 #include <dpp/dpp.h>
 #include "discord.h"
-extern "C" {
-    #include "parseENV.h"
-}
 
 #define PARAM_LEN 4
 
