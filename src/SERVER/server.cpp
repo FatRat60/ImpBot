@@ -119,6 +119,30 @@ std::string server::getPort()
     return port;
 }
 
+void server::realCrafterCheck(dpp::cluster& bot, const dpp::slashcommand_t& event, size_t command_num)
+{
+    if (isChill(event))
+    {
+        switch (command_num)
+        {
+            case 9:
+                start(event);
+                break;
+            case 10:
+                terminate(event);
+                break;
+            case 11:
+                ip(bot, event);
+                break;
+            default:
+                event.reply("This should be impossible");
+                break;
+        }
+    }
+    else
+        event.reply("You are not a real crafter.");
+}
+
 void server::start(const dpp::slashcommand_t& event)
 {   
     if (active_container.empty())
@@ -223,33 +247,38 @@ void server::ip(dpp::cluster& bot, const dpp::slashcommand_t& event)
     if (!active_container.empty())
     {
         dpp::user user = event.command.get_issuing_user();
+        bot.direct_message_create(user.id, dpp::message("Here's the ip for the " + active_container + " server\n" + getIP() + ":" + getPort()),
+        [event](const dpp::confirmation_callback_t& callback)
+        {
+            if (callback.is_error())
+                event.reply("Smth went wrong. Could not slide into your DM");
+            else
+                event.reply("Check your DM pookie");
+        });
+    }
+    else
+        event.reply("No active server");
+}
+
+bool server::isChill(const dpp::slashcommand_t& event)
+{
+    bool chill = false;
+    char* env_result = get_env_var("CRAFTERS");
+    if (env_result)
+    {
+        std::string crafter_role = std::string(env_result);
+        dpp::user user = event.command.get_issuing_user();
         auto guild = event.command.get_guild();
         dpp::guild_member user_guild = guild.members[user.id];
         auto roles = user_guild.get_roles();
-        bool chill = false;
         for (auto role: roles)
         {
-            if (role.str() == "718598319537913859")
+            if (role.str() == crafter_role)
             {
                 chill = true;
                 break;
             }
         }
-
-        if (chill)
-        {
-            bot.direct_message_create(user.id, dpp::message("Here's the ip for the " + active_container + " server\n" + getIP() + ":" + getPort()),
-            [event](const dpp::confirmation_callback_t& callback)
-            {
-                if (callback.is_error())
-                    event.reply("Smth went wrong. Could not slide into your DM");
-                else
-                    event.reply("Check your DM pookie");
-            });
-        }
-        else
-            event.reply("You're not allowed to see my ip");
     }
-    else
-        event.reply("No active server");
+    return chill;
 }

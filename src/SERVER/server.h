@@ -5,6 +5,9 @@
 #include <yaml-cpp/yaml.h>
 #include <string>
 #include <vector>
+extern "C" {
+    #include "parseENV.h"
+}
 
 #define SERVER_LIST_FILE "servers.txt"
 #define MIKU_THUMBNAIL "https://assets.audiomack.com/ghxstnx/c31bf1a8c0b277651cb1e02630598e57afb31857ebec32992842e66de6bac31e.jpeg?width=300"
@@ -17,6 +20,7 @@ class server
         static void checkForActiveServer(dpp::cluster& bot);
         static void setDir(std::string dir) { server_dir = dir; }
         static bool dirExists() { return !server_dir.empty(); }
+        static void realCrafterCheck(dpp::cluster& bot, const dpp::slashcommand_t& event, size_t command_num);
         static void start(const dpp::slashcommand_t& event);
         static void terminate(const dpp::slashcommand_t& event);
         static void ip(dpp::cluster& bot, const dpp::slashcommand_t& event);
@@ -26,6 +30,7 @@ class server
         static std::string getIP();
         static std::string getPort();
         static dpp::embed createServerEmbed();
+        static bool isChill(const dpp::slashcommand_t& event);
 };
 
 #endif
