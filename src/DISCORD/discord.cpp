@@ -131,15 +131,9 @@ void discord::handle_slash(dpp::cluster& bot, const dpp::slashcommand_t& event)
             break;
 
         case START:
-            server::start(event);
-            break;
-
         case TERMINATE:
-            server::terminate(event);
-            break;
-
         case IP:
-            server::ip(bot, event);
+            server::realCrafterCheck(bot, event, search->second);
             break;
         case SHUFFLE:
             music::shuffle(event);
